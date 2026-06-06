@@ -1,0 +1,29 @@
+{
+  "name": "branding-engine",
+  "version": "0.1.0",
+  "description": "Generate a complete brand kit — favicon set, vector mark, wordmark lockups, social cards, brand sheet, and web tokens — from one accent color and a monogram.",
+  "type": "module",
+  "bin": {
+    "branding-engine": "bin/cli.mjs"
+  },
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "assets",
+    "index.mjs",
+    "requirements.txt"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "sharp": "0.34.5"
+  },
+  "optionalDependencies": {
+    "@playwright/test": "^1.60.0"
+  },
+  "license": "MIT"
+}

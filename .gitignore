@@ -1,0 +1,6 @@
+node_modules/
+.brand-cache/
+kits/
+*-glyphs.json
+!assets/glyphs/*-glyphs.json
+.DS_Store
