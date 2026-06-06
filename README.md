@@ -75,6 +75,17 @@ Install:
 npm install branding-engine
 ```
 
+For a project-local CLI installation:
+
+```bash
+npm install --save-dev branding-engine
+npx branding-engine --help
+```
+
+The package can also be installed globally with
+`npm install --global branding-engine`, though project-local installation keeps
+the version reproducible for collaborators and CI.
+
 For sheets and social cards:
 
 ```bash
@@ -170,6 +181,70 @@ branding-engine generate --config path/to/brand.config.json --public path/to/pub
 ```
 
 Generated files are deterministic and intended to be committed with the site.
+
+### Astro
+
+Astro serves files from `public/` at the site root, so the default generator
+paths work without customization:
+
+```bash
+npm install --save-dev branding-engine
+npx branding-engine init
+npm run brand
+```
+
+In your shared layout, add the generated links and tokens:
+
+```astro
+<html lang="en">
+  <head>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="stylesheet" href="/brand-tokens.css" />
+    <meta name="theme-color" content="#2563EB" />
+  </head>
+  <body><slot /></body>
+</html>
+```
+
+To regenerate before every production build, add it to the existing build
+script:
+
+```json
+{
+  "scripts": {
+    "brand": "branding-engine generate",
+    "build": "npm run brand && astro build"
+  }
+}
+```
+
+### Plain HTML or Static Site
+
+If the repository already publishes a `public/` directory, use the same
+default commands as Astro. If the repository root itself is deployed:
+
+```bash
+npx branding-engine generate --public .
+```
+
+Add the links printed by the command to the page `<head>`, plus the token
+stylesheet:
+
+```html
+<link rel="stylesheet" href="/brand-tokens.css" />
+```
+
+The generated CSS variables can then be used from any stylesheet:
+
+```css
+.button {
+  color: var(--brand-on-accent);
+  background: var(--brand-accent);
+}
+```
 
 ## Full Brand Kit
 

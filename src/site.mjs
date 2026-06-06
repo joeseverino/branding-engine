@@ -28,6 +28,7 @@ function headSnippet(accent) {
     '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
     '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
     '<link rel="manifest" href="/site.webmanifest" />',
+    '<link rel="stylesheet" href="/brand-tokens.css" />',
     `<meta name="theme-color" content="${accent}" />`,
   ].join('\n');
 }

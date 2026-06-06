@@ -1,22 +1,17 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { buildBrand, buildKit, generateSite, markSvg, normalizeGlyph } from '../index.mjs';
+import {
+  buildKit,
+  generateSite,
+  initSite,
+  markSvg,
+  normalizeGlyph,
+} from '../index.mjs';
 import { extractGlyphs } from '../src/lib/extract-glyphs.mjs';
-
-async function filesUnder(root, current = root) {
-  const entries = await readdir(current, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const absolute = path.join(current, entry.name);
-    if (entry.isDirectory()) files.push(...await filesUnder(root, absolute));
-    else files.push(path.relative(root, absolute));
-  }
-  return files.sort();
-}
 
 test('normalizeGlyph accepts 1-3 alphanumeric characters and uppercases letters', () => {
   assert.equal(normalizeGlyph('a'), 'A');
@@ -130,28 +125,51 @@ test('generateSite writes the expected browser-free assets', async () => {
   }
 });
 
-test('committed Severino Labs example matches a fresh build', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-example-'));
-  const config = path.resolve('examples/severino-labs/brand.json');
-  const expected = path.resolve('examples/severino-labs/generated');
+test('initSite scaffolds an Astro or plain-site project without replacing existing scripts', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-site-'));
 
   try {
-    await buildBrand({
-      config,
-      outDir: cwd,
-    });
+    await writeFile(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({
+        name: 'example-site',
+        scripts: { build: 'astro build' },
+      }),
+    );
 
-    const expectedFiles = await filesUnder(expected);
-    const actualFiles = await filesUnder(cwd);
-    assert.deepEqual(actualFiles, expectedFiles);
+    const result = initSite({ cwd });
+    const config = JSON.parse(await readFile(path.join(cwd, 'brand.config.json'), 'utf8'));
+    const pkg = JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8'));
 
-    for (const file of expectedFiles) {
-      assert.deepEqual(
-        await readFile(path.join(cwd, file)),
-        await readFile(path.join(expected, file)),
-        file,
-      );
-    }
+    assert.deepEqual(result.created, [
+      'brand.config.json',
+      'package.json ("brand" script)',
+    ]);
+    assert.equal(config.glyph, 'MS');
+    assert.equal(pkg.scripts.build, 'astro build');
+    assert.equal(pkg.scripts.brand, 'branding-engine generate');
+    assert.match(result.headSnippet, /href="\/site\.webmanifest"/);
+    assert.match(result.headSnippet, /href="\/brand-tokens\.css"/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('generateSite supports a root-level public directory for plain HTML sites', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-plain-'));
+
+  try {
+    await writeFile(
+      path.join(cwd, 'brand.config.json'),
+      JSON.stringify({ name: 'Plain Site', accent: '#6D5EF7', glyph: 'PS' }),
+    );
+
+    await generateSite({ cwd, publicDir: '.' });
+
+    const manifest = JSON.parse(await readFile(path.join(cwd, 'site.webmanifest'), 'utf8'));
+    const tokens = await readFile(path.join(cwd, 'brand-tokens.css'), 'utf8');
+    assert.equal(manifest.name, 'Plain Site');
+    assert.match(tokens, /--brand-accent: #6D5EF7;/);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

@@ -36,11 +36,13 @@ const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);
 
 try {
-  if (cmd === 'init') {
+  if (!cmd || cmd === '--help' || cmd === '-h') {
+    console.log(USAGE);
+  } else if (cmd === 'init') {
     const { created, headSnippet } = initSite({});
     if (created.length) console.log('Created:\n' + created.map((c) => '  ' + c).join('\n'));
     console.log('\nNext: edit brand.config.json (accent, glyph, name), then run `npm run brand`.');
-    console.log('\nAdd this to your site <head> (or import public/brand-tokens.css for the CSS vars):\n');
+    console.log('\nAdd this to your site <head>:\n');
     console.log(headSnippet + '\n');
   } else if (cmd === 'generate') {
     const { written, publicDir, headSnippet } = await generateSite({ config: opt.config, publicDir: opt.public });
@@ -59,7 +61,7 @@ try {
     await buildKit({ slug, hex, glyph, wordmark, font: opt.font, outDir: opt.out, only: opt.only });
   } else {
     console.error(USAGE);
-    process.exit(cmd ? 1 : 0);
+    process.exit(1);
   }
 } catch (err) {
   console.error(`\n${err.message}`);
