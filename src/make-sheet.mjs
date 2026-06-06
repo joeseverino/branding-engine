@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { markSvg } from './lib/mark.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 import { fontPath } from './lib/font.mjs';
 import { darken, normalizeHex } from './lib/color.mjs';
 import { esc } from './lib/html.mjs';
@@ -21,6 +22,7 @@ function prettyFont(file) {
 }
 
 export async function makeSheet({ slug, hex, glyph = 'JS', wordmark, deep, browser, outDir }) {
+  glyph = normalizeGlyph(glyph);
   const fill = normalizeHex(hex);
   const deepShade = deep ? normalizeHex(deep) : darken(fill);
   const title = wordmark || glyph;

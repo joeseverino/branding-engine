@@ -8,6 +8,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { wordmarkSvg } from './lib/wordmark.mjs';
 import { WORDMARK_CHARS, ensureGlyphs, wordmarkGlyphFile } from './lib/glyphs.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 
 const INK = { light: '#0b0620', dark: '#ffffff' }; // ink for light / dark backgrounds
 const PNG_HEIGHT = 512; // raster export height; SVG stays the source of truth
@@ -17,13 +18,14 @@ const VARIANTS = [
 ];
 
 export async function makeWordmark({ slug, hex, text, glyph = 'JS', weight = 700, outDir }) {
+  glyph = normalizeGlyph(glyph);
   const dir = path.join(outDir, slug, 'wordmark');
   mkdirSync(dir, { recursive: true });
 
   // The build pre-extracts, but a one-off kit lands straight here, so make sure
   // the cache exists. It bundles the whole alphabet (WORDMARK_CHARS) so a one-off
   // never overwrites the shared set with just its own name's letters.
-  ensureGlyphs({ file: wordmarkGlyphFile(), weight, chars: WORDMARK_CHARS, label: 'wordmark glyphs' });
+  await ensureGlyphs({ file: wordmarkGlyphFile(), weight, chars: WORDMARK_CHARS, label: 'wordmark glyphs' });
 
   const toPng = (svg) => sharp(Buffer.from(svg)).resize({ height: PNG_HEIGHT }).png().toBuffer();
   for (const { caps, base } of VARIANTS) {

@@ -1,129 +1,409 @@
 # branding-engine
 
-Generate a complete, self-consistent brand kit from one accent color and a
-monogram: a favicon set, a vector mark, wordmark lockups, social cards, a brand
-sheet, and drop-in web tokens. The mark and wordmark are real font outlines
-(pure vector, no raster source); only the social cards and brand sheet render
-live text via a headless browser.
+Generate a consistent brand kit from a compact alphanumeric mark and one accent
+color. Outputs include favicons, vector and raster marks, wordmark lockups,
+brand sheets, social cards, manifests, and CSS tokens.
 
-One monogram, one accent color, every brand surface.
+The mark and wordmark use real font outlines. The common website path requires
+only Node.js; browser rendering is optional.
 
-## Install
+## Example
 
-```sh
-npm install branding-engine
-```
-
-`sharp` (used everywhere) installs automatically. `@playwright/test` is an
-**optional** dependency: it's only needed for the brand sheet and social cards.
-The mark, wordmark, and icon generation path needs neither Playwright nor Python.
-To enable sheets and cards:
-
-```sh
-npm i -D @playwright/test && npx playwright install chromium
-```
-
-## Plug into a site (Astro, Eleventy, plain HTML)
-
-The fastest path for a website: scaffold a config, set your color, generate a
-favicon set into `public/`. No headless browser, no python.
-
-```sh
-npm i -D branding-engine
-npx branding-engine init        # writes brand.config.json + a `brand` npm script
-# edit accent, glyph, name in brand.config.json, then:
-npm run brand                   # generates into public/, prints the <head> snippet
-```
-
-`brand.config.json` is flat:
+Illustrative input using a non-production sample palette:
 
 ```json
-{ "name": "My Site", "accent": "#2563EB", "glyph": "MS", "wordmark": "My Site" }
-```
-
-`generate` writes these to `public/` at the root paths a static site expects, and
-prints the `<head>` block to paste in (its `theme-color` reflects your accent):
-
-```text
-public/favicon.ico  favicon.svg  favicon-32.png  favicon-192.png
-public/apple-touch-icon.png  site.webmanifest  brand-tokens.css
-```
-
-Commit those files; they are deterministic, so re-running `npm run brand` after a
-color change reproduces them exactly. Optional flags: `--public <dir>`,
-`--config <file>`.
-
-## CLI
-
-```sh
-# A one-off kit (mark, wordmark, sheet, web) from an accent + initials
-branding-engine kit acme ff5733 AC "Acme Corp"
-
-# Just the lean, browser-free pieces (what a website needs)
-branding-engine kit acme ff5733 AC "Acme Corp" --only mark,wordmark,web
-
-# A whole brand (primary identity + surfaces + cards) from a config
-branding-engine build --config ./brand --out ./kits
-```
-
-Flags: `--config <dir|brand.json>`, `--out <dir>`, `--font <file>`,
-`--only mark,wordmark,sheet,web,cards` (`mark` includes the favicon set).
-
-## Brand config
-
-`build` reads a `brand.json` (and an optional sibling `surfaces.json`). Paths
-inside it (`font`, `portrait`) are resolved relative to the config's directory;
-omit `font` to use the bundled Inter.
-
-```jsonc
 {
-  "name": "Acme",
-  "wordmarkWeight": 700,            // wordmark text weight (mark uses `weight`, default 800)
+  "name": "Severino Labs",
   "identity": {
-    "slug": "acme",
-    "color": "#1E3A8A",            // accent
-    "deep": "#14245C",            // optional; falls back to a darkened accent
-    "onColor": "#ffffff",         // optional; color on the accent
-    "glyph": "AC",
-    "wordmark": "Acme Corp"
+    "slug": "severino-labs",
+    "color": "#6D5EF7",
+    "deep": "#352A8A",
+    "onColor": "#FFFFFF",
+    "glyph": "SL",
+    "wordmark": "Severino Labs"
   },
-  "cardPalette": { "accent": "#5B82D6", "textSoft": "#DDE6FB", "textMuted": "#A9C0E8" },
-  "cards": [ /* { file, width, height, photoWidth, eyebrow, name, tagline, meta, url } */ ]
+  "portrait": "./studio.jpg",
+  "cardPalette": {
+    "accent": "#9B8CFF",
+    "textSoft": "#E3DEFF",
+    "textMuted": "#B7AFE8"
+  },
+  "cards": [
+    {
+      "file": "social-card.png",
+      "width": 1200,
+      "height": 630,
+      "photoWidth": 420,
+      "eyebrow": "Severino Labs",
+      "name": "Brand systems, generated.",
+      "tagline": "Marks, wordmarks, sheets, web assets, and social cards from one config.",
+      "meta": "Illustrative branding-engine example",
+      "url": "github.com/jseverino/branding-engine"
+    }
+  ]
 }
 ```
 
-`surfaces.json` lists other surfaces that inherit the font and glyph and override
-only color (and optionally wordmark):
+Generated mark:
+
+![Severino Labs generated mark](./examples/severino-labs/generated/severino-labs/mark/mark-512.png)
+
+Generated wordmark:
+
+![Severino Labs generated wordmark](./examples/severino-labs/generated/severino-labs/wordmark/wordmark-light.png)
+
+Generated brand sheet:
+
+![Severino Labs generated brand sheet](./examples/severino-labs/generated/severino-labs/sheet/overview.png)
+
+Generated social card:
+
+![Severino Labs generated social card](./examples/severino-labs/generated/cards/social-card.png)
+
+The complete input and committed generated output are in
+[`examples/severino-labs`](./examples/severino-labs/).
+
+## Requirements
+
+- Node.js 18 or newer
+- `sharp`, OpenType.js, and the WOFF2 decoder, installed automatically
+- Optional: `@playwright/test` plus Chromium for brand sheets and social cards
+
+Install:
+
+```bash
+npm install branding-engine
+```
+
+For sheets and social cards:
+
+```bash
+npm install --save-dev @playwright/test
+npx playwright install chromium
+```
+
+## Glyph Rules
+
+`glyph` is the compact mark rendered inside the tile.
+
+- Accepts 1-3 ASCII letters or digits
+- Lowercase letters are normalized to uppercase
+- Spaces, punctuation, symbols, and strings longer than three characters fail
+- Layout dynamically adjusts by character count and caps narrow marks by height
+
+Valid:
+
+```text
+A
+AC
+A3X
+7
+R2
+```
+
+Invalid:
+
+```text
+ABCD
+A C
+A-C
+@
+```
+
+## Quick Start: Add Branding to a Website
+
+Use `init` and `generate` when a site needs favicons, a manifest, and CSS
+tokens in its public directory.
+
+```bash
+npm install --save-dev branding-engine
+npx branding-engine init
+```
+
+Edit the generated `brand.config.json`:
 
 ```json
-{ "support": { "color": "#1f4d57", "wordmark": "Acme Support" } }
+{
+  "name": "My Site",
+  "accent": "#2563EB",
+  "deep": "#173B8F",
+  "onColor": "#FFFFFF",
+  "glyph": "MS"
+}
 ```
+
+Then generate the files:
+
+```bash
+npm run brand
+```
+
+Default output:
+
+```text
+public/
+├── apple-touch-icon.png
+├── brand-tokens.css
+├── favicon-32.png
+├── favicon-192.png
+├── favicon.ico
+├── favicon.svg
+└── site.webmanifest
+```
+
+The command also prints the `<head>` links to add to the site.
+
+### Website Config Reference
+
+| Field | Required | Description |
+|---|---:|---|
+| `name` | yes | Application name used in `site.webmanifest` |
+| `accent` | yes | Six-digit hex accent, with or without `#` |
+| `glyph` | yes | One to three alphanumeric mark characters |
+| `deep` | no | Dark palette shade; derived from `accent` when omitted |
+| `onColor` | no | Glyph color on the accent; defaults to `#FFFFFF` |
+
+Options:
+
+```bash
+branding-engine generate --config path/to/brand.config.json --public path/to/public
+```
+
+Generated files are deterministic and intended to be committed with the site.
+
+## Full Brand Kit
+
+Use `build` for a reusable config-driven kit:
+
+```bash
+branding-engine build --config ./brand --out ./kits
+```
+
+`--config` accepts either a `brand.json` path or a directory containing
+`brand.json`. An optional `surfaces.json` can live beside it.
+
+Minimal `brand.json`:
+
+```json
+{
+  "name": "Acme",
+  "identity": {
+    "slug": "acme",
+    "color": "#1E3A8A",
+    "glyph": "AC",
+    "wordmark": "Acme Corp"
+  }
+}
+```
+
+Expanded `brand.json`:
+
+```json
+{
+  "name": "Acme",
+  "font": "./AcmeSans.ttf",
+  "weight": 800,
+  "wordmarkWeight": 700,
+  "identity": {
+    "slug": "acme",
+    "color": "#1E3A8A",
+    "deep": "#14245C",
+    "onColor": "#FFFFFF",
+    "glyph": "A3C",
+    "wordmark": "Acme Corp"
+  },
+  "portrait": "./portrait.jpg",
+  "cardPalette": {
+    "accent": "#5B82D6",
+    "textSoft": "#DDE6FB",
+    "textMuted": "#A9C0E8"
+  },
+  "cards": [
+    {
+      "file": "social-card.png",
+      "width": 1200,
+      "height": 630,
+      "photoWidth": 420,
+      "eyebrow": "Acme Corp",
+      "name": "Acme",
+      "tagline": "Built for what comes next.",
+      "meta": "Brand systems and engineering",
+      "url": "acme.example"
+    }
+  ]
+}
+```
+
+### Full Config Reference
+
+| Field | Required | Description |
+|---|---:|---|
+| `name` | no | Human-readable brand name used in logs and fallbacks |
+| `identity` | yes | Primary brand identity object |
+| `identity.slug` | yes | Output directory name |
+| `identity.color` | yes | Six-digit accent color |
+| `identity.glyph` | yes | One to three alphanumeric mark characters |
+| `identity.wordmark` | no | Text used for wordmark lockups and sheet title |
+| `identity.deep` | no | Curated dark shade |
+| `identity.onColor` | no | Glyph color on accent |
+| `font` | no | Font path relative to `brand.json`; defaults to bundled Inter |
+| `weight` | no | Mark font weight; defaults to `800` |
+| `wordmarkWeight` | no | Wordmark font weight; defaults to `700` |
+| `surfaces` | no | Inline additional surfaces; `surfaces.json` takes precedence |
+| `portrait` | for cards | JPEG path relative to `brand.json` |
+| `cardPalette` | for cards | Card accent and supporting text colors |
+| `cards` | no | Social-card definitions rendered to `<out>/cards/` |
+
+Additional surfaces inherit the primary glyph unless they override it:
+
+```json
+{
+  "support": {
+    "color": "#1F4D57",
+    "wordmark": "Acme Support"
+  },
+  "labs": {
+    "color": "#7C3AED",
+    "glyph": "A3",
+    "wordmark": "Acme Labs"
+  }
+}
+```
+
+## One-Off Kit
+
+Create a kit without a config file:
+
+```bash
+branding-engine kit acme ff5733 AC "Acme Corp"
+```
+
+Three-character example:
+
+```bash
+branding-engine kit prism 635bff P3X "Prism Works" \
+  --only mark,wordmark,web \
+  --out ./kits
+```
+
+Syntax:
+
+```text
+branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [options]
+```
+
+## Stages
+
+Select stages with a comma-separated `--only` value:
+
+```bash
+branding-engine build \
+  --config ./brand.json \
+  --out ./kits \
+  --only mark,wordmark,web
+```
+
+| Stage | Browser needed | Output |
+|---|---:|---|
+| `mark` | no | Favicons, vector mark, PNG marks, transparent variants |
+| `wordmark` | no | Vector and PNG title-case/all-caps lockups |
+| `web` | no | CSS tokens, web manifest, and `<head>` snippet |
+| `sheet` | yes | Brand overview poster, sections, and generated kit README |
+| `cards` | yes | Configured social-card PNGs |
+
+Without `--only`, all stages run.
+
+## Output Layout
+
+Each kit is written under `<out>/<slug>/`:
+
+```text
+<out>/<slug>/
+├── icons/
+├── mark/
+├── sheet/
+├── web/
+└── wordmark/
+```
+
+Social cards are written to `<out>/cards/`.
 
 ## Programmatic API
 
 ```js
-import { buildBrand, buildKit, markSvg, wordmarkSvg } from 'branding-engine';
+import {
+  buildBrand,
+  buildKit,
+  generateSite,
+  markSvg,
+  normalizeGlyph,
+  wordmarkSvg,
+} from 'branding-engine';
 
-await buildKit({ slug: 'acme', hex: '#ff5733', glyph: 'AC', wordmark: 'Acme', only: 'mark,wordmark', outDir: 'public/brand' });
-const svg = markSvg({ size: 64, bg: '#ff5733', glyph: 'AC' }); // pure string, no I/O
+await buildKit({
+  slug: 'acme',
+  hex: '#FF5733',
+  glyph: 'a3x',
+  wordmark: 'Acme',
+  only: 'mark,wordmark,web',
+  outDir: 'public/brand',
+});
+
+const glyph = normalizeGlyph('a3x'); // "A3X"
+const mark = markSvg({ size: 64, bg: '#FF5733', glyph });
+const lockup = wordmarkSvg({
+  tileHex: '#FF5733',
+  text: 'Acme',
+  glyph,
+});
 ```
 
-## Output
+Main exports:
 
-Each kit is `<out>/<slug>/`:
+- `buildBrand(options)`
+- `buildKit(options)`
+- `initSite(options)`
+- `generateSite(options)`
+- `makeMark(options)`
+- `makeWordmark(options)`
+- `makeSheet(options)`
+- `makeWeb(options)`
+- `makeCards(options)`
+- `markSvg(options)`
+- `wordmarkSvg(options)`
+- `normalizeGlyph(glyph)`
+- `renderCard(browser, options)`
+- `launchBrowser()`
 
-- `icons/`: `favicon.svg/.ico`, `favicon-32/192.png`, `apple-touch-icon.png`
-- `mark/`: `mark.svg`, `mark-512/1024.png`, transparent light/dark
-- `wordmark/`: `wordmark.svg` + light/dark PNGs, plus all-caps `wordmark-caps.*`
-- `sheet/`: `overview.png` poster + section images, and a `README.md`
-- `web/`: `tokens.css`, `site.webmanifest`, `head.html`
+## Fonts and Glyph Extraction
 
-Social cards land in `<out>/cards/`.
+Bundled Inter caches include uppercase letters and digits for marks, plus
+uppercase, lowercase, digits, and spaces for wordmarks.
 
-## Fonts and python
+Custom fonts and missing characters are extracted entirely in Node with
+OpenType.js and a WebAssembly WOFF2 decoder. No Python, fonttools, native
+binding, or system font utility is required. Supported input formats are TTF,
+OTF, WOFF, and WOFF2.
 
-The bundled Inter ships with prebuilt glyph outlines, so the default font needs
-**no python**. A custom font (or a glyph outside the bundled set) is extracted on
-demand and requires `python3` + `fonttools` (`pip install -r requirements.txt`);
-the extracted cache is written under `.brand-cache/` (or `$BRAND_CACHE_DIR`),
-never into the installed package.
+Extracted caches are written under `.brand-cache/`, or the directory specified
+by `BRAND_CACHE_DIR`. The installed package is never modified. If a variable
+font cannot be instantiated at the requested `weight`, the build exits with the
+font filename and parser error; use a static font file or another supported
+variable font.
+
+## Errors
+
+The CLI exits nonzero with an actionable message for invalid glyphs, invalid
+colors, missing configs, unavailable font glyphs, or missing optional browser
+dependencies.
+
+Example:
+
+```text
+Invalid glyph: "ABCD". Expected 1-3 letters or digits, e.g. A, AC, or A3X.
+```
+
+## License
+
+MIT. The bundled Inter font includes its own notice under
+`assets/fonts/inter/NOTICE.md`.

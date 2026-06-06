@@ -5,9 +5,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { darken, normalizeHex } from './lib/color.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 
 export function makeWeb({ slug, hex, glyph = 'JS', name, deep, onColor, outDir }) {
   const accent = normalizeHex(hex);
+  glyph = normalizeGlyph(glyph);
   const deepShade = deep ? normalizeHex(deep) : darken(accent);
   const onAccent = onColor ? normalizeHex(onColor) : '#ffffff';
   const label = name || slug;

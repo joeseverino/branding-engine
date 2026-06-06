@@ -1,0 +1,30 @@
+{
+  "name": "Severino Labs",
+  "identity": {
+    "slug": "severino-labs",
+    "color": "#6D5EF7",
+    "deep": "#352A8A",
+    "onColor": "#FFFFFF",
+    "glyph": "SL",
+    "wordmark": "Severino Labs"
+  },
+  "portrait": "./studio.jpg",
+  "cardPalette": {
+    "accent": "#9B8CFF",
+    "textSoft": "#E3DEFF",
+    "textMuted": "#B7AFE8"
+  },
+  "cards": [
+    {
+      "file": "social-card.png",
+      "width": 1200,
+      "height": 630,
+      "photoWidth": 420,
+      "eyebrow": "Severino Labs",
+      "name": "Brand systems, generated.",
+      "tagline": "Marks, wordmarks, sheets, web assets, and social cards from one config.",
+      "meta": "Illustrative branding-engine example",
+      "url": "github.com/jseverino/branding-engine"
+    }
+  ]
+}

@@ -1,17 +1,17 @@
 // Shared glyph-outline cache management. A cache is the JSON that
-// extract-glyphs.py writes: { font, unitsPerEm, weight, glyphs }. Both the mark
+// extract-glyphs.mjs writes: { font, unitsPerEm, weight, glyphs }. Both the mark
 // (uppercase monogram at the brand weight) and the wordmark (mixed case at the
 // lighter wordmark weight) sit on this, so extraction logic lives in one place.
 //
 // Two cache locations: the read-only set BUNDLED with this package (the default
-// Inter, full alphabet: so the common case needs no python and never writes),
+// Inter, full alphabet: so the common case never writes),
 // and a writable directory (BRAND_CACHE_DIR, else <cwd>/.brand-cache) used when a
 // custom font or a missing glyph forces a fresh extraction. The package install
 // itself is never written to.
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractGlyphs } from './extract-glyphs.mjs';
 import { DEFAULT_FONT, fontPath } from './font.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -51,28 +51,15 @@ export function cacheCovers({ file, font, weight, chars }) {
 }
 
 // Extract `chars` from `font` at `weight` into the writable cache unless a
-// readable cache already covers them. Throws (with an actionable message) only if
-// extraction is actually needed and python3/fonttools is missing.
-export function ensureGlyphs({ file, font = fontPath(), weight, chars, label = file }) {
+// readable cache already covers them.
+export async function ensureGlyphs({ file, font = fontPath(), weight, chars, label = file }) {
   if (cacheCovers({ file, font, weight, chars })) return;
   const dir = cacheDir();
   const out = path.join(dir, file);
   const charset = [...new Set([...chars])].join('');
   mkdirSync(dir, { recursive: true });
   console.log(`Extracting ${label} "${charset}" @ ${weight} from ${path.basename(font)}`);
-  try {
-    execFileSync(
-      'python3',
-      [path.resolve(here, 'extract-glyphs.py'), charset, String(weight), font, out],
-      { stdio: 'inherit' },
-    );
-  } catch {
-    throw new Error(
-      `Could not extract glyphs into ${out}. A custom font or new glyph needs ` +
-        `python3 + fonttools (pip install -r requirements.txt). The bundled Inter ` +
-        `needs none of this.`,
-    );
-  }
+  await extractGlyphs({ chars: charset, weight, fontPath: font, outPath: out });
 }
 
 export function loadGlyphs(file) {

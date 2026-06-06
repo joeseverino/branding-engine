@@ -4,18 +4,29 @@
 //
 // Outlines come from brand-glyphs.json (A-Z and 0-9 are bundled by default).
 import { loadGlyphs } from './glyphs.mjs';
+import { normalizeGlyph } from './identity.mjs';
 
 // Read glyphs lazily so a BRAND_GLYPHS set in-process (by the build) is honored.
 // Defaults to brand-glyphs.json; point at another extracted set with BRAND_GLYPHS.
 let _glyphData;
+let _glyphFile;
 function glyphData() {
-  if (!_glyphData) _glyphData = loadGlyphs(process.env.BRAND_GLYPHS || 'brand-glyphs.json');
+  const file = process.env.BRAND_GLYPHS || 'brand-glyphs.json';
+  if (!_glyphData || _glyphFile !== file) {
+    _glyphData = loadGlyphs(file);
+    _glyphFile = file;
+  }
   return _glyphData;
 }
 
 const RENDER = {
   letterSpacing: -0.045, // em
-  widthRatio: 0.63,      // glyph ink width relative to the box
+  widthRatio: {
+    1: 0.46,
+    2: 0.63,
+    3: 0.76,
+  },
+  heightRatio: 0.56,     // cap narrow glyphs such as "I" by height
   radiusRatio: 0.22,     // rounded-square corner radius (0 = square)
 };
 
@@ -31,8 +42,7 @@ function layout(glyph) {
     if (!g) {
       throw new Error(
         `No outline for glyph "${ch}". Available: ${Object.keys(glyphs).join(', ')}. ` +
-          `It will be extracted automatically for the bundled font; for a custom ` +
-          `font, ensure python3 + fonttools are installed.`,
+          `Re-run through buildKit or buildBrand so the Node extractor can cache it.`,
       );
     }
     placed.push({ x: penX, g });
@@ -45,7 +55,14 @@ function layout(glyph) {
     yMin = Math.min(yMin, g.bounds.yMin);
     yMax = Math.max(yMax, g.bounds.yMax);
   }
-  return { placed, cx: (xMin + xMax) / 2, cy: (yMin + yMax) / 2, gw: xMax - xMin };
+  return {
+    placed,
+    count: chars.length,
+    cx: (xMin + xMax) / 2,
+    cy: (yMin + yMax) / 2,
+    gw: xMax - xMin,
+    gh: yMax - yMin,
+  };
 }
 
 /**
@@ -55,11 +72,14 @@ function layout(glyph) {
  * @param {boolean} [opts.rounded=true]  rounded-square (false = full square)
  * @param {string|null} [opts.bg]        tile fill, or null for transparent
  * @param {string}  [opts.fg='#ffffff']  glyph fill
- * @param {string}  [opts.glyph='JS']    monogram (J and S are the extracted outlines)
+ * @param {string}  [opts.glyph='JS']    1-3 alphanumeric mark characters
  */
 export function markSvg({ size = 512, rounded = true, bg, fg = '#ffffff', glyph = 'JS' } = {}) {
-  const { placed, cx, cy, gw } = layout(glyph);
-  const s = (RENDER.widthRatio * size) / gw;
+  const normalizedGlyph = normalizeGlyph(glyph);
+  const { placed, count, cx, cy, gw, gh } = layout(normalizedGlyph);
+  const widthScale = (RENDER.widthRatio[count] * size) / gw;
+  const heightScale = (RENDER.heightRatio * size) / gh;
+  const s = Math.min(widthScale, heightScale);
   const rx = rounded ? +(size * RENDER.radiusRatio).toFixed(2) : 0;
   const bgRect = bg ? `<rect width="${size}" height="${size}" rx="${rx}" fill="${bg}"/>` : '';
   const paths = placed

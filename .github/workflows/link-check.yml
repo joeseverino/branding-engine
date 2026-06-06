@@ -1,0 +1,44 @@
+name: link check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'examples/**/*.md'
+  schedule:
+    - cron: '37 11 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
+        with:
+          output: lychee/documentation.md
+          args: >-
+            --no-progress
+            --verbose
+            --accept 200,204,206,301,302,303,307,308,429,999
+            README.md
+            CONTRIBUTING.md
+            SECURITY.md
+            examples/**/*.md
+          fail: true
+
+      - name: Upload link check report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: link-check-report
+          path: lychee
+          if-no-files-found: ignore

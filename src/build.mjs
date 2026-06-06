@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_FONT } from './lib/font.mjs';
 import { WORDMARK_CHARS, ensureGlyphs } from './lib/glyphs.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 import { darken } from './lib/color.mjs';
 import { launchBrowser } from './lib/render.mjs';
 import { makeMark } from './make-mark.mjs';
@@ -65,7 +66,7 @@ export async function buildBrand({ config, outDir, only } = {}) {
     ...Object.entries(surfaces).map(([slug, s]) => ({
       slug, color: s.color, glyph: s.glyph || id.glyph, wordmark: s.wordmark, deep: s.deep, onColor: s.onColor,
     })),
-  ];
+  ].map((kit) => ({ ...kit, glyph: normalizeGlyph(kit.glyph) }));
   const markChars = [...new Set([...BASE_CHARS, ...kits.flatMap((k) => [...k.glyph])])].join('');
 
   process.env.BRAND_FONT = font;
@@ -73,10 +74,10 @@ export async function buildBrand({ config, outDir, only } = {}) {
   process.env.BRAND_WORDMARK_GLYPHS = 'wordmark-glyphs.json';
 
   if (stages.has('mark') || stages.has('sheet')) {
-    ensureGlyphs({ file: 'brand-glyphs.json', font, weight, chars: markChars, label: 'mark glyphs' });
+    await ensureGlyphs({ file: 'brand-glyphs.json', font, weight, chars: markChars, label: 'mark glyphs' });
   }
   if (stages.has('wordmark')) {
-    ensureGlyphs({ file: 'wordmark-glyphs.json', font, weight: wordmarkWeight, chars: WORDMARK_CHARS, label: 'wordmark glyphs' });
+    await ensureGlyphs({ file: 'wordmark-glyphs.json', font, weight: wordmarkWeight, chars: WORDMARK_CHARS, label: 'wordmark glyphs' });
   }
 
   const browser = stages.has('sheet') || (stages.has('cards') && brand.cards) ? await launchBrowser() : null;
@@ -113,10 +114,11 @@ export async function buildKit({
 } = {}) {
   outDir = outDir ? path.resolve(outDir) : path.join(process.cwd(), 'kits');
   const stages = stageSet(only);
+  glyph = normalizeGlyph(glyph);
 
   // A custom font points the caches at font-specific files and pre-extracts the
-  // mark glyphs for these initials; the default font uses the bundled caches and
-  // needs no python. (makeWordmark extracts its own wordmark cache.)
+  // Cache mark glyphs for this identity. The default font uses bundled caches;
+  // custom fonts are extracted in Node. makeWordmark manages its own cache.
   if (font) {
     const abs = path.isAbsolute(font) ? font : path.resolve(process.cwd(), font);
     const stem = path.basename(abs).replace(/\.[^.]+$/, '');
@@ -124,7 +126,7 @@ export async function buildKit({
     process.env.BRAND_GLYPHS = `${stem}-glyphs.json`;
     process.env.BRAND_WORDMARK_GLYPHS = `${stem}-wordmark-glyphs.json`;
     if (stages.has('mark') || stages.has('sheet')) {
-      ensureGlyphs({ file: process.env.BRAND_GLYPHS, font: abs, weight, chars: glyph, label: 'mark glyphs' });
+      await ensureGlyphs({ file: process.env.BRAND_GLYPHS, font: abs, weight, chars: glyph, label: 'mark glyphs' });
     }
   } else {
     delete process.env.BRAND_FONT;

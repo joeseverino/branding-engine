@@ -8,9 +8,18 @@ import { fontPath } from './font.mjs';
 
 // The bundled font embedded as a data URI, as an @font-face for `family`.
 export function fontFaceCss(family) {
-  const b64 = readFileSync(fontPath()).toString('base64');
+  const font = fontPath();
+  const ext = font.split('.').pop().toLowerCase();
+  const formats = {
+    otf: ['font/otf', 'opentype'],
+    ttf: ['font/ttf', 'truetype'],
+    woff: ['font/woff', 'woff'],
+    woff2: ['font/woff2', 'woff2'],
+  };
+  const [mime, format] = formats[ext] || ['application/octet-stream', ext];
+  const b64 = readFileSync(font).toString('base64');
   return `@font-face{font-family:${family};font-weight:200 900;font-display:block;` +
-    `src:url(data:font/woff2;base64,${b64}) format('woff2')}`;
+    `src:url(data:${mime};base64,${b64}) format('${format}')}`;
 }
 
 // Playwright is an optional dependency: only the sheet and social-card renderers

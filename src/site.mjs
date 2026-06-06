@@ -11,6 +11,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { markSvg } from './lib/mark.mjs';
 import { darken, normalizeHex } from './lib/color.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 import { pngsToIco } from './lib/ico.mjs';
 
 const DEFAULT_CONFIG = {
@@ -69,7 +70,7 @@ export async function generateSite({ config, publicDir = 'public', cwd = process
   const accent = normalizeHex(cfg.accent);
   const onAccent = cfg.onColor ? normalizeHex(cfg.onColor) : '#ffffff';
   const deep = cfg.deep ? normalizeHex(cfg.deep) : darken(accent);
-  const glyph = cfg.glyph || 'JS';
+  const glyph = normalizeGlyph(cfg.glyph || 'JS');
   const name = cfg.name || 'Site';
 
   const pub = path.resolve(cwd, publicDir);

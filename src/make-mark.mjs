@@ -8,10 +8,12 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { markSvg } from './lib/mark.mjs';
 import { normalizeHex } from './lib/color.mjs';
+import { normalizeGlyph } from './lib/identity.mjs';
 import { pngsToIco } from './lib/ico.mjs';
 
 export async function makeMark({ slug, hex, glyph = 'JS', outDir }) {
   const fill = normalizeHex(hex);
+  glyph = normalizeGlyph(glyph);
   const iconsDir = path.join(outDir, slug, 'icons');
   const markDir = path.join(outDir, slug, 'mark');
   fs.mkdirSync(iconsDir, { recursive: true });

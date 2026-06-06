@@ -3,7 +3,7 @@
 //   branding-engine init                              scaffold a site brand.config + npm script
 //   branding-engine generate [--public <dir>] [--config <file>]   favicons + manifest + tokens -> public/
 //   branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only a,b]
-//   branding-engine kit <slug> <hex> <initials> ["Wordmark"] [--font f] [--out d] [--only a,b]
+//   branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font f] [--out d] [--only a,b]
 // Stages for --only: mark, wordmark, sheet, web, cards (mark includes favicons).
 import { buildBrand, buildKit } from '../src/build.mjs';
 import { generateSite, initSite } from '../src/site.mjs';
@@ -29,7 +29,8 @@ const USAGE =
   '  branding-engine init                          scaffold brand.config.json + a `brand` npm script\n' +
   '  branding-engine generate [--public <dir>] [--config <file>]   favicons + manifest + tokens -> public/\n' +
   '  branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only mark,wordmark,sheet,web,cards]\n' +
-  '  branding-engine kit <slug> <hex> <initials> ["Wordmark"] [--font <file>] [--out <dir>] [--only ...]';
+  '  branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font <file>] [--out <dir>] [--only ...]\n' +
+  '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);

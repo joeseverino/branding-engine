@@ -9,6 +9,7 @@ export { makeWeb } from './src/make-web.mjs';
 export { makeCards } from './src/make-cards.mjs';
 export { markSvg } from './src/lib/mark.mjs';
 export { wordmarkSvg } from './src/lib/wordmark.mjs';
+export { normalizeGlyph } from './src/lib/identity.mjs';
 // Lower-level primitives for embedding the renderers in a custom pipeline (e.g.
 // a site that writes brand assets to its own paths).
 export { renderCard } from './src/lib/card.mjs';

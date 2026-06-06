@@ -21,8 +21,13 @@ const LETTER_SPACING = { title: -0.03125, caps: -0.02 }; // em
 // Read glyphs lazily so a cache (re)written earlier in the same process, or a
 // BRAND_WORDMARK_GLYPHS set by build.mjs, is honored on first render.
 let _glyphData;
+let _glyphFile;
 function glyphData() {
-  if (!_glyphData) _glyphData = loadGlyphs(wordmarkGlyphFile());
+  const file = wordmarkGlyphFile();
+  if (!_glyphData || _glyphFile !== file) {
+    _glyphData = loadGlyphs(file);
+    _glyphFile = file;
+  }
   return _glyphData;
 }
 
