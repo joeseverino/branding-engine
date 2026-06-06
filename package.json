@@ -1,6 +1,6 @@
 {
   "name": "branding-engine",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generate favicons, marks, wordmarks, social cards, brand sheets, and web tokens from one color and a 1-3 character glyph.",
   "type": "module",
   "scripts": {

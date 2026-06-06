@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## 0.2.1 - 2026-06-06
+
+- Refresh pinned checkout and CodeQL GitHub Actions.
+- Reissue the `0.2.0` feature release after GitHub-hosted runners were
+  interrupted during publishing.
+
 ## 0.2.0 - 2026-06-06
 
 - Accept and dynamically size one to three alphanumeric glyph characters.
