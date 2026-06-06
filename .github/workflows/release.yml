@@ -33,4 +33,13 @@ jobs:
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           test "$GITHUB_REF_NAME" = "v$PACKAGE_VERSION"
-      - run: npm publish
+      # Idempotent publish: skip if this exact version is already on npm. Lets a
+      # re-pushed tag (e.g. re-signing) re-run green instead of failing on E409.
+      - name: Publish to npm if not already published
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if npm view "branding-engine@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "branding-engine@$PACKAGE_VERSION already published; skipping publish."
+          else
+            npm publish
+          fi
