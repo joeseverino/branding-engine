@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## 0.2.2 - 2026-06-06
+
+- Correct the repository URL on the example social card
+  (`github.com/joeseverino/branding-engine`).
+- Add README status badges and an `AGENTS.md` guide so contributors' AI agents
+  can work in the repo with the right context.
+
 ## 0.2.1 - 2026-06-06
 
 - Refresh pinned checkout and CodeQL GitHub Actions.

@@ -31,7 +31,7 @@ sample palette. It runs the full-kit `build` command from
       "name": "Brand systems, generated.",
       "tagline": "Marks, wordmarks, sheets, web assets, and social cards from one config.",
       "meta": "Illustrative branding-engine example",
-      "url": "github.com/jseverino/branding-engine"
+      "url": "github.com/joeseverino/branding-engine"
     }
   ]
 }

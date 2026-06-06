@@ -1,5 +1,10 @@
 # branding-engine
 
+[![npm version](https://img.shields.io/npm/v/branding-engine.svg)](https://www.npmjs.com/package/branding-engine)
+[![ci](https://github.com/joeseverino/branding-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/joeseverino/branding-engine/actions/workflows/ci.yml)
+[![node](https://img.shields.io/node/v/branding-engine.svg)](https://nodejs.org)
+[![license: MIT](https://img.shields.io/npm/l/branding-engine.svg)](./LICENSE)
+
 Generate a consistent brand kit from a compact alphanumeric mark and one accent
 color. Outputs include favicons, vector and raster marks, wordmark lockups,
 brand sheets, social cards, manifests, and CSS tokens.
@@ -38,7 +43,7 @@ Illustrative input using a non-production sample palette:
       "name": "Brand systems, generated.",
       "tagline": "Marks, wordmarks, sheets, web assets, and social cards from one config.",
       "meta": "Illustrative branding-engine example",
-      "url": "github.com/jseverino/branding-engine"
+      "url": "github.com/joeseverino/branding-engine"
     }
   ]
 }
