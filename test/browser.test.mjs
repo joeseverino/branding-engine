@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import sharp from 'sharp';
 import test from 'node:test';
 
 import { buildBrand } from '../index.mjs';
@@ -30,11 +31,32 @@ test('committed Severino Labs example matches a fresh full build', async () => {
     assert.deepEqual(actualFiles, expectedFiles);
 
     for (const file of expectedFiles) {
-      assert.deepEqual(
-        await readFile(path.join(cwd, file)),
-        await readFile(path.join(expected, file)),
-        file,
-      );
+      const actual = await readFile(path.join(cwd, file));
+      const reference = await readFile(path.join(expected, file));
+      const extension = path.extname(file);
+
+      if (['.png', '.ico'].includes(extension)) {
+        assert.ok(actual.length > 100, file);
+        if (extension === '.png') {
+          const actualMetadata = await sharp(actual).metadata();
+          const referenceMetadata = await sharp(reference).metadata();
+          assert.deepEqual(
+            {
+              format: actualMetadata.format,
+              width: actualMetadata.width,
+              height: actualMetadata.height,
+            },
+            {
+              format: referenceMetadata.format,
+              width: referenceMetadata.width,
+              height: referenceMetadata.height,
+            },
+            file,
+          );
+        }
+      } else {
+        assert.deepEqual(actual, reference, file);
+      }
     }
   } finally {
     await rm(cwd, { recursive: true, force: true });

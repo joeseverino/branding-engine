@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 - Refresh pinned checkout and CodeQL GitHub Actions.
 - Reissue the `0.2.0` feature release after GitHub-hosted runners were
   interrupted during publishing.
+- Make generated-raster integration checks portable across operating systems.
 
 ## 0.2.0 - 2026-06-06
 
