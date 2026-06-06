@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Generate a complete brand kit — favicon set, vector mark, wordmark lockups, social cards, brand sheet, and web tokens — from one accent color and a monogram.",
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "bin": {
     "branding-engine": "bin/cli.mjs"
   },
@@ -18,6 +21,24 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joeseverino/branding-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joeseverino/branding-engine/issues"
+  },
+  "homepage": "https://github.com/joeseverino/branding-engine#readme",
+  "keywords": [
+    "branding",
+    "favicon",
+    "logo",
+    "svg",
+    "social-cards"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "sharp": "0.34.5"
