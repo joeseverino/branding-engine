@@ -18,6 +18,9 @@ All notable changes to this project are documented here.
   width is the constraint); a `row` becomes a short, wide banner whose height is
   sized to the node count (a 2-node diagram no longer floats in a tall 16:9
   frame); everything else stays 16:9 `cover`. Exposed as `figureSize()`.
+- Enlarge topology link and endpoint labels (the network chip and the
+  `fromLabel`/`toLabel` octets) so they stay legible once a wide diagram is
+  scaled down to mobile width.
 
 ## 0.2.2 - 2026-06-06
 

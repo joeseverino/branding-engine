@@ -286,13 +286,13 @@ function topoLink(a, b, { label, fromLabel, toLabel, style, dir = 'both', color 
     const accent = color === 'accent';
     out.labels.push(
       `<div style="position:absolute;left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px;transform:translate(-50%,-50%);` +
-      `background:${c.paper};color:${accent ? c.accent : c.ink};font-size:23px;font-weight:${accent ? 700 : 600};line-height:1.2;text-align:center;` +
+      `background:${c.paper};color:${accent ? c.accent : c.ink};font-size:28px;font-weight:${accent ? 700 : 600};line-height:1.2;text-align:center;` +
       `padding:6px 13px;border-radius:8px;box-shadow:${c.nodeShadow}${accent ? `;border:1.5px solid ${c.accent}` : ''}">${ml(label)}</div>`,
     );
   }
   const endLabel = (px, py, txt) => out.labels.push(
     `<div style="position:absolute;left:${px}px;top:${py}px;transform:translate(-50%,-50%);` +
-    `color:${c.subline};font-size:24px;font-weight:500;white-space:nowrap">${esc(txt)}</div>`,
+    `color:${c.subline};font-size:30px;font-weight:600;white-space:nowrap">${esc(txt)}</div>`,
   );
   const inset = 36, drop = 30;
   if (fromLabel) endLabel(x1 + ux * inset, y1 + uy * inset + drop, fromLabel);
