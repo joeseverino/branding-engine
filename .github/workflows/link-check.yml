@@ -28,7 +28,7 @@ jobs:
           args: >-
             --no-progress
             --verbose
-            --accept 200,204,206,301,302,303,307,308,429,999
+            --accept 200,204,206,301,302,303,307,308,403,429,999
             README.md
             CONTRIBUTING.md
             SECURITY.md
