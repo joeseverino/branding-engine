@@ -24,7 +24,8 @@ jobs:
           package-manager-cache: false
 
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; Node 22 ships an older npm.
-      - run: npm install -g npm@latest
+      # Pinned to an exact version (not @latest) for a reproducible publish job.
+      - run: npm install -g npm@11.5.1
 
       - run: npm ci
       - run: npx playwright install --with-deps chromium
