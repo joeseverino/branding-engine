@@ -372,6 +372,58 @@ Syntax:
 branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [options]
 ```
 
+## Figures
+
+Designed, brand-themed graphics for writeup covers, README banners, and OG/social
+cards, driven by a small JSON spec instead of code. Same headless-Chromium + bundled
+Inter pipeline as the social cards; for flowcharts and sequence diagrams use Mermaid
+(the `diagram` tool) instead.
+
+```bash
+branding-engine figure cover.figure.json \
+  --tokens ./kits/severino-labs/web/tokens.css \
+  --out cover.png            # defaults to <spec>.png
+```
+
+A spec is one object. `template` and its fields are the only required parts; everything
+else has a default.
+
+| Field | Default | Notes |
+|---|---|---|
+| `template` | — | `title`, `flow`, `diamond`, or `nodes` |
+| `size` | `cover` | preset (`cover` 1600×900, `wide`, `og` 1200×630, `github` 1280×640, `square`) or `[w, h]` |
+| `theme` | `light` | `light` or `dark` |
+| `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` override |
+
+Output renders at 2× the logical size (override with `--scale`) for crisp text.
+
+**`title`** — eyebrow + headline + optional sub-line and footer. The all-purpose cover/banner.
+
+```json
+{ "template": "title", "size": "og", "theme": "dark",
+  "eyebrow": "Diamond Model", "headline": "Marks & Spencer\nCyberattack",
+  "subline": "Identity-based intrusion mapped to MITRE ATT&CK.", "footer": "jseverino.com" }
+```
+
+**`flow`** — stacked left-to-right step chains (before/after, pipelines). `rows[].anchor`
+highlights one step in the brand accent.
+
+```json
+{ "template": "flow", "theme": "light", "rows": [
+  { "label": "Before", "steps": ["Browser", "PHP", "MySQL"] },
+  { "label": "After", "steps": ["Markdown", "Astro", "Cloudflare"], "anchor": "Cloudflare" } ] }
+```
+
+**`diamond`** — the four-vertex model around a center node (`top`/`left`/`right`/`bottom` + `center`).
+
+```json
+{ "template": "diamond", "theme": "dark", "center": "M&S\n2025",
+  "nodes": { "top": "Adversary", "left": "Capability", "right": "Infrastructure", "bottom": "Victim" } }
+```
+
+**`nodes`** — a generic graph: `layout` of `row`, `ring`, or `grid`, a `nodes` list, and an
+optional `center`. `\n` breaks a line in any label.
+
 ## Stages
 
 Select stages with a comma-separated `--only` value:
