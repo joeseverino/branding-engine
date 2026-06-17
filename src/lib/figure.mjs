@@ -18,6 +18,7 @@ import { darken, mix, normalizeHex } from './color.mjs';
 export const SIZES = {
   cover: [1600, 900],   // 16:9 writeup cover / hero
   wide: [1600, 800],    // 2:1 banner
+  topo: [1500, 1000],   // 3:2 radial topology — taller frame reads bigger on mobile
   og: [1200, 630],      // Open Graph / Twitter card
   github: [1280, 640],  // GitHub repo social preview
   square: [1200, 1200], // square avatar / icon-ish
@@ -45,6 +46,11 @@ export function palette(theme, tokens) {
   const dark = theme === 'dark';
   return {
     dark,
+    accent: t.accent,
+    deep: t.deep,
+    onAccent: t.onAccent,
+    paper: t.paper,
+    ink: t.ink,
     pageBg: dark
       ? `radial-gradient(125% 115% at 50% 42%, ${mix(t.accent, t.deep, 55)} 0%, ${t.deep} 55%, ${darken(t.deep, 0.72)} 100%)`
       : `radial-gradient(120% 120% at 50% 45%, ${mix(t.accent, t.paper, 8)} 0%, ${t.paper} 72%)`,
@@ -87,8 +93,8 @@ function nodeBox({ x, y, w, h, label, variant, fontSize = 40 }, c) {
 // Full-canvas SVG layer for connectors, behind the nodes.
 function svgLayer(W, H, inner) {
   return `<svg class="fig-lines" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L7,3 L0,6 Z" fill="var(--line)"/></marker></defs>${inner}</svg>`;
+    <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto-start-reverse">
+      <path d="M0,0 L7,3 L0,6 Z" fill="context-stroke"/></marker></defs>${inner}</svg>`;
 }
 const seg = (x1, y1, x2, y2, { dashed, arrow } = {}) =>
   `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line)" stroke-width="3"` +
@@ -203,7 +209,193 @@ function tplNodes(spec, W, H, c) {
   return svgLayer(W, H, lines.join('')) + nodes.join('') + center;
 }
 
-export const TEMPLATES = { title: tplTitle, flow: tplFlow, diamond: tplDiamond, nodes: tplNodes };
+// ---- topology --------------------------------------------------------------
+// Network / lab topologies: device-glyph nodes in ringed circles with labeled
+// links. Unlike `flow` (boxes-and-arrows pipelines) this keeps the topology
+// look — an icon per device, a node label + optional address, and links that
+// carry a network name / IP. `layout` is 'row' (linear) or 'ring' (star around
+// an optional `center` node). Stroke-style glyphs inherit the node's color.
+const GLYPHS = {
+  laptop: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M1.5 19.5h21L20.5 16h-17l-2 3.5Z"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+  desktop: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+  server: '<rect x="4" y="3" width="16" height="7" rx="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.5"/><path d="M7.5 6.5h.01M7.5 17.5h.01"/>',
+  database: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.66 3.1 3 7 3s7-1.34 7-3V6"/><path d="M5 12c0 1.66 3.1 3 7 3s7-1.34 7-3"/>',
+  switch: '<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M7.5 10l-2.5 2 2.5 2M16.5 10l2.5 2-2.5 2M5.5 12h6M12.5 12h6"/>',
+  router: '<rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 16h.01M12 10V5m0 0 3 2.2M12 5 9 7.2"/>',
+  cloud: '<path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.6 3.5 3.5 0 0 0 7 18Z"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+};
+
+function glyphSvg(name, size, color) {
+  const g = GLYPHS[name] || GLYPHS.server;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" ` +
+    `stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${g}</svg>`;
+}
+
+// A ringed device node centered on (x, y). `role` 'anchor'/'attacker' fills the
+// circle in the brand accent; everything else is a white circle with an accent ring.
+function topoNode({ x, y, d, icon, label, addr, role, labelPos = 'below', labelW, labelAt }, c) {
+  const filled = role === 'anchor' || role === 'attacker';
+  const fill = filled ? c.accent : c.paper;
+  const border = filled ? c.deep : (c.dark ? c.paper : c.accent);
+  const glyphColor = filled ? c.onAccent : (c.dark ? c.deep : c.accent);
+  const gsize = Math.round(d * 0.54);
+  const circle = `<div class="fig-topo-node" style="left:${x}px;top:${y}px;width:${d}px;height:${d}px;` +
+    `background:${fill};border:3px solid ${border};box-shadow:${c.nodeShadow}">${glyphSvg(icon || 'server', gsize, glyphColor)}</div>`;
+  // Label placement: `labelAt: [dx, dy]` (px from node center) for full control,
+  // else `labelPos` above/below/left/right.
+  let lx = x, ly, tform;
+  if (Array.isArray(labelAt)) {
+    lx = x + labelAt[0]; ly = y + labelAt[1]; tform = 'translate(-50%,-50%)';
+  } else if (labelPos === 'above') {
+    ly = y - d / 2 - 14; tform = 'translate(-50%,-100%)';
+  } else if (labelPos === 'left') {
+    lx = x - d / 2 - 16; ly = y; tform = 'translate(-100%,-50%)';
+  } else if (labelPos === 'right') {
+    lx = x + d / 2 + 16; ly = y; tform = 'translate(0,-50%)';
+  } else {
+    ly = y + d / 2 + 14; tform = 'translateX(-50%)';
+  }
+  const ta = labelPos === 'left' ? 'right' : labelPos === 'right' ? 'left' : 'center';
+  const text = `<div style="position:absolute;left:${lx}px;top:${ly}px;transform:${tform};` +
+    `text-align:${ta};line-height:1.18;color:${c.ink};font-weight:700;font-size:30px;width:${labelW || Math.round(d * 2.1)}px">` +
+    `${ml(label || '')}${addr ? `<div style="font-weight:500;font-size:24px;color:${c.subline};margin-top:4px">${esc(addr)}</div>` : ''}</div>`;
+  return circle + text;
+}
+
+// Edge between two positioned nodes; trims to the circle rims, carries a center
+// label chip, and optional per-endpoint labels (e.g. the IP octet under each
+// arrowhead) just past each node, below the line.
+function topoLink(a, b, { label, fromLabel, toLabel, style, dir = 'both', color }, c, out) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const gap = 9;
+  const x1 = a.x + ux * (a.d / 2 + gap), y1 = a.y + uy * (a.d / 2 + gap);
+  const x2 = b.x - ux * (b.d / 2 + gap), y2 = b.y - uy * (b.d / 2 + gap);
+  const stroke = color === 'accent' ? c.accent : 'var(--line)';
+  const w = color === 'accent' ? 4 : 3;
+  out.lines.push(
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}"` +
+    `${style === 'dashed' ? ' stroke-dasharray="3 9" stroke-linecap="round"' : ''}` +
+    `${dir !== 'none' ? ' marker-end="url(#arrow)"' : ''}` +
+    `${dir === 'both' ? ' marker-start="url(#arrow)"' : ''}/>`,
+  );
+  if (label) {
+    const accent = color === 'accent';
+    out.labels.push(
+      `<div style="position:absolute;left:${(x1 + x2) / 2}px;top:${(y1 + y2) / 2}px;transform:translate(-50%,-50%);` +
+      `background:${c.paper};color:${accent ? c.accent : c.ink};font-size:28px;font-weight:${accent ? 700 : 600};line-height:1.2;text-align:center;` +
+      `padding:6px 13px;border-radius:8px;box-shadow:${c.nodeShadow}${accent ? `;border:1.5px solid ${c.accent}` : ''}">${ml(label)}</div>`,
+    );
+  }
+  const endLabel = (px, py, txt) => out.labels.push(
+    `<div style="position:absolute;left:${px}px;top:${py}px;transform:translate(-50%,-50%);` +
+    `color:${c.subline};font-size:30px;font-weight:600;white-space:nowrap">${esc(txt)}</div>`,
+  );
+  const inset = 36, drop = 30;
+  if (fromLabel) endLabel(x1 + ux * inset, y1 + uy * inset + drop, fromLabel);
+  if (toLabel) endLabel(x2 - ux * inset, y2 - uy * inset + drop, toLabel);
+}
+
+function tplTopology(spec, W, H, c) {
+  const layout = ['ring', 'free', 'star'].includes(spec.layout) ? spec.layout : 'row';
+  const items = spec.nodes || [];
+  const pos = {};
+  const out = { lines: [], labels: [] };
+
+  if (layout === 'star') {
+    // Hub-and-spoke by compass position. Each node sets `pos`: 'center' for the
+    // hub, then 'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'. The engine snaps e/w to the
+    // hub's exact y and n/s to its exact x, so spoke links are dead straight by
+    // construction — no hand-tuned coordinates. Easiest way to a clean topology.
+    const cx = W / 2, cy = Math.round(H * 0.47);
+    const rx = W * 0.34, ry = H * 0.32;
+    // Push diagonals to near-corners so they clear the adjacent cardinal nodes
+    // (e.g. a NW controller stays well above a W host) and don't crowd labels.
+    const dgx = 0.97, dgy = 0.92;
+    const slot = {
+      center: [cx, cy], n: [cx, cy - ry], s: [cx, cy + ry], e: [cx + rx, cy], w: [cx - rx, cy],
+      ne: [cx + rx * dgx, cy - ry * dgy], nw: [cx - rx * dgx, cy - ry * dgy],
+      se: [cx + rx * dgx, cy + ry * dgy], sw: [cx - rx * dgx, cy + ry * dgy],
+    };
+    const baseD = Math.round(Math.min(W, H) * (spec.nodeScale || 0.16));
+    const occupied = new Set(items.map((n) => n.pos));
+    items.forEach((node) => {
+      const p = slot[node.pos] || slot.center;
+      const isCenter = node.pos === 'center';
+      const d = Math.round(baseD * (node.scale || (isCenter ? 1.12 : 1)));
+      let labelAt = node.labelAt;
+      if (isCenter && !labelAt && !node.labelPos) {
+        // Park the hub label in the first empty diagonal quadrant.
+        const q = ['ne', 'se', 'nw', 'sw'].find((k) => !occupied.has(k)) || 'n';
+        const fx = q.includes('e') ? 1 : q.includes('w') ? -1 : 0;
+        const fy = q.includes('n') ? -1 : 1;
+        labelAt = fx === 0 ? [0, fy * d * 1.0] : [fx * d * 0.98, fy * d * 0.82];
+      }
+      pos[node.id] = {
+        x: p[0], y: p[1], d,
+        labelPos: node.labelPos || (isCenter ? undefined : 'below'),
+        labelW: node.labelW || (isCenter ? Math.round(d * 1.5) : undefined),
+        labelAt,
+      };
+    });
+  } else if (layout === 'free') {
+    // Placed layout: each node carries `at: [xFraction, yFraction]` (0..1 of the
+    // canvas) and an optional `scale`. The fully general topology — express any
+    // arrangement (controller in a corner, an attacker between two hosts) while
+    // keeping one template, one spec format, and the shared brand palette.
+    const baseD = Math.round(Math.min(W, H) * (spec.nodeScale || 0.16));
+    items.forEach((node) => {
+      const at = node.at || [0.5, 0.5];
+      pos[node.id] = {
+        x: at[0] * W,
+        y: at[1] * H,
+        d: Math.round(baseD * (node.scale || 1)),
+        labelPos: node.labelPos || (at[1] < 0.5 ? 'above' : 'below'),
+        labelW: node.labelW,
+      };
+    });
+  } else if (layout === 'ring') {
+    const cx = W / 2, cy = Math.round(H * 0.50);
+    const r = Math.min(W, H) * 0.35;
+    const d = Math.round(Math.min(W, H) * 0.16);
+    const n = Math.max(items.length, 1);
+    // Stagger so no node sits straight above/below the center (where the
+    // center node's label and the radial links would collide with it).
+    const a0 = -Math.PI / 2 + Math.PI / n;
+    items.forEach((node, i) => {
+      const a = a0 + (2 * Math.PI * i) / n;
+      const y = cy + r * Math.sin(a);
+      pos[node.id] = { x: cx + r * Math.cos(a), y, d, labelPos: y < cy ? 'above' : 'below' };
+    });
+    if (spec.center) pos[spec.center.id] = { x: cx, y: cy, d: Math.round(d * 1.06), labelPos: 'below', labelW: Math.round(d * 1.6) };
+  } else {
+    const cy = Math.round(H * 0.46);
+    const n = items.length;
+    const padX = W * 0.13, left = padX, right = W - padX;
+    const d = rowNodeD(W, n);
+    const gap = n > 1 ? (right - left) / (n - 1) : 0;
+    items.forEach((node, i) => {
+      pos[node.id] = { x: n === 1 ? W / 2 : left + gap * i, y: cy, d };
+    });
+  }
+
+  const links = spec.links || (layout === 'row'
+    ? items.slice(1).map((node, i) => ({ from: items[i].id, to: node.id, dir: 'to' }))
+    : []);
+  links.forEach((lk) => {
+    const a = pos[lk.from], b = pos[lk.to];
+    if (a && b) topoLink(a, b, lk, c, out);
+  });
+
+  const all = spec.center ? [...items, spec.center] : items;
+  const nodes = all.filter((node) => pos[node.id]).map((node) => topoNode({ ...node, ...pos[node.id] }, c));
+  return svgLayer(W, H, out.lines.join('')) + out.labels.join('') + nodes.join('');
+}
+
+export const TEMPLATES = { title: tplTitle, flow: tplFlow, diamond: tplDiamond, nodes: tplNodes, topology: tplTopology };
 
 export function resolveSize(size) {
   if (Array.isArray(size) && size.length === 2) return size.map(Number);
@@ -211,11 +403,41 @@ export function resolveSize(size) {
   return SIZES.cover;
 }
 
+// Resolve the canvas size for a spec, applying a layout-aware default when the
+// spec gives no explicit `size`. Radial topologies (star/ring) default to the
+// 3:2 `topo` frame so they stay legible on mobile, where width is the
+// constraint; everything else defaults to 16:9 `cover`. An explicit `size`
+// always wins. This is what keeps authoring scalable — pick the layout, the
+// aspect ratio follows.
+export function figureSize(spec) {
+  if (spec.size != null) return resolveSize(spec.size);
+  if (spec.template === 'topology') {
+    const layout = spec.layout || 'row';
+    // Radial diagrams read bigger on mobile in a 3:2 frame.
+    if (layout === 'ring' || layout === 'star') return resolveSize('topo');
+    // Linear diagrams get a short, wide banner whose height is sized to the node
+    // count, so a 2-node lab fills the frame instead of floating in 16:9.
+    if (layout === 'row') {
+      const W = 1600;
+      const n = (spec.nodes || []).length || 1;
+      const d = Math.round(Math.min(((W * 0.74) / n) * 0.62, W * 0.155));
+      return [W, Math.max(d + 250, 470)];
+    }
+  }
+  return resolveSize(spec.size);
+}
+
+// Node diameter for a row of `n` nodes on a width-`W` canvas. Width-driven (not
+// height-driven) so the banner height can shrink to fit without shrinking nodes.
+function rowNodeD(W, n) {
+  return Math.round(Math.min(((W * 0.74) / Math.max(n, 1)) * 0.62, W * 0.155));
+}
+
 // Render one figure spec to a PNG on the given (caller-owned) browser.
 export async function renderFigure(browser, spec, { outPath, tokens, scale = 2 }) {
   const tpl = TEMPLATES[spec.template];
   if (!tpl) throw new Error(`Unknown figure template: "${spec.template}". Known: ${Object.keys(TEMPLATES).join(', ')}.`);
-  const [W, H] = resolveSize(spec.size);
+  const [W, H] = figureSize(spec);
   const c = palette(spec.theme === 'dark' ? 'dark' : 'light', { ...tokens, ...(spec.colors || {}) });
   const body = tpl(spec, W, H, c);
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -225,6 +447,7 @@ ${fontFaceCss('Inter')}
 html,body{width:${W}px;height:${H}px}
 body{font-family:Inter,sans-serif;background:${c.pageBg};-webkit-font-smoothing:antialiased;position:relative;overflow:hidden}
 .fig-node{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 22px}
+.fig-topo-node{position:absolute;transform:translate(-50%,-50%);border-radius:50%;display:flex;align-items:center;justify-content:center}
 .fig-lines{position:absolute;inset:0}
 </style></head><body>${body}</body></html>`;
 
