@@ -4,9 +4,11 @@
 //   branding-engine generate [--public <dir>] [--config <file>]   favicons + manifest + tokens -> public/
 //   branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only a,b]
 //   branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font f] [--out d] [--only a,b]
+//   branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]
 // Stages for --only: mark, wordmark, sheet, web, cards (mark includes favicons).
 import { buildBrand, buildKit } from '../src/build.mjs';
 import { generateSite, initSite } from '../src/site.mjs';
+import { makeFigure } from '../src/make-figure.mjs';
 
 function parse(argv) {
   const pos = [];
@@ -30,7 +32,9 @@ const USAGE =
   '  branding-engine generate [--public <dir>] [--config <file>]   favicons + manifest + tokens -> public/\n' +
   '  branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only mark,wordmark,sheet,web,cards]\n' +
   '  branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font <file>] [--out <dir>] [--only ...]\n' +
-  '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.';
+  '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.\n' +
+  '  branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]\n' +
+  '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);
@@ -59,6 +63,13 @@ try {
       process.exit(1);
     }
     await buildKit({ slug, hex, glyph, wordmark, font: opt.font, outDir: opt.out, only: opt.only });
+  } else if (cmd === 'figure') {
+    const [specPath] = pos;
+    if (!specPath) {
+      console.error(USAGE);
+      process.exit(1);
+    }
+    await makeFigure({ specPath, out: opt.out, tokensPath: opt.tokens, scale: opt.scale });
   } else {
     console.error(USAGE);
     process.exit(1);
