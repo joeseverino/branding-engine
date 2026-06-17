@@ -390,8 +390,8 @@ else has a default.
 
 | Field | Default | Notes |
 |---|---|---|
-| `template` | — | `title`, `flow`, `diamond`, or `nodes` |
-| `size` | `cover` | preset (`cover` 1600×900, `wide`, `og` 1200×630, `github` 1280×640, `square`) or `[w, h]` |
+| `template` | — | `title`, `flow`, `diamond`, `nodes`, or `topology` |
+| `size` | `cover` (radial `topology` → `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og` 1200×630, `github` 1280×640, `square`) or `[w, h]` |
 | `theme` | `light` | `light` or `dark` |
 | `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` override |
 
@@ -423,6 +423,51 @@ highlights one step in the brand accent.
 
 **`nodes`** — a generic graph: `layout` of `row`, `ring`, or `grid`, a `nodes` list, and an
 optional `center`. `\n` breaks a line in any label.
+
+**`topology`** — network / lab topologies that keep the topology look: a device glyph per
+node in a ringed circle, a node label, and links that carry a network name or IP. Use this
+(not `flow`) when the graphic is devices on a network rather than a boxes-and-arrows
+pipeline.
+
+`layout` options, easiest first:
+
+- **`star`** — hub-and-spoke. Each node sets `pos`: `center` for the hub, then `n`/`s`/`e`/`w`/
+  `ne`/`nw`/`se`/`sw`. The engine snaps `e`/`w` to the hub's exact y and `n`/`s` to its exact x,
+  so spoke links are **dead straight by construction** — no hand-tuned coordinates. The hub's
+  label auto-parks in the first empty diagonal quadrant. Use this for almost every network diagram.
+- **`row`** — nodes evenly spaced left→right (pipelines, before/after).
+- **`ring`** — nodes evenly around an optional `center`.
+- **`free`** — each node placed by `at: [xFraction, yFraction]` (0..1 of the canvas) with an
+  optional `scale`. The escape hatch for arrangements the others can't express.
+
+Omit `size` and the frame follows the layout: radial `star`/`ring` topologies use the 3:2 `topo`
+frame (legible on mobile, where width is the constraint); a `row` becomes a short, wide banner whose
+height is sized to the node count, so a 2-node diagram fills the frame instead of floating in 16:9.
+An explicit `size` always wins.
+
+Each node takes `{ id, icon, label, role?, at?, scale?, labelPos? }`; `icon` is one of
+`laptop`, `monitor`, `server`, `database`, `switch`, `router`, `cloud`, `phone`; `role` of
+`anchor` or `attacker` fills the node in the brand accent; `labelPos` is `above`/`below`.
+Links are `{ from, to, label?, fromLabel?, toLabel?, style?, dir?, color? }` where `style`
+is `dashed`, `dir` is `to`/`both`/`none`, `color: "accent"` draws the link (and a bordered
+label chip) in the brand accent for an attack/overlay path, and `fromLabel`/`toLabel` print
+a small label under each endpoint (e.g. the IP octet beside each host). Omitting `links` in
+a `row` chains the nodes in order.
+
+```json
+{ "template": "topology", "layout": "ring", "theme": "light",
+  "center": { "id": "s1", "icon": "switch", "label": "s1\nOpen vSwitch", "role": "anchor" },
+  "nodes": [
+    { "id": "c0", "icon": "server", "label": "c0\nSDN Controller" },
+    { "id": "h1", "icon": "monitor", "label": "h1\nVictim" },
+    { "id": "h3", "icon": "monitor", "label": "h3\nAttacker", "role": "attacker" },
+    { "id": "h2", "icon": "monitor", "label": "h2\nTarget" } ],
+  "links": [
+    { "from": "c0", "to": "s1", "label": "OpenFlow", "style": "dashed", "dir": "to" },
+    { "from": "h1", "to": "s1", "dir": "both" },
+    { "from": "h2", "to": "s1", "dir": "both" },
+    { "from": "h3", "to": "s1", "dir": "both" } ] }
+```
 
 ## Stages
 

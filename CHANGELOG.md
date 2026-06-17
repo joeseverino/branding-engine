@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+- Add a `topology` figure template for network and lab diagrams: device-glyph
+  nodes (`laptop`, `monitor`, `server`, `database`, `switch`, `router`, `cloud`,
+  `phone`) in ringed circles, `star`/`row`/`ring`/`free` layouts (`star` is
+  hub-and-spoke by compass `pos` with guaranteed-straight spokes; `free` places
+  nodes by `at: [x, y]` fractions with an optional `scale`), links with `dashed` style,
+  arrow direction, `color: "accent"` for an attack/overlay path, and
+  `fromLabel`/`toLabel` endpoint labels, plus `anchor`/`attacker` accent fills.
+  Keeps the topology look that `flow` flattens. Make connector arrowheads work at
+  either end of a link.
+- Default a figure's frame from its layout when `size` is omitted: radial
+  `star`/`ring` topologies use the new 3:2 `topo` preset (larger on mobile, where
+  width is the constraint); a `row` becomes a short, wide banner whose height is
+  sized to the node count (a 2-node diagram no longer floats in a tall 16:9
+  frame); everything else stays 16:9 `cover`. Exposed as `figureSize()`.
+
 ## 0.2.2 - 2026-06-06
 
 - Correct the repository URL on the example social card
