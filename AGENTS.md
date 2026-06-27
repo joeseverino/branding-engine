@@ -32,7 +32,7 @@ npm i -D @playwright/test && npx playwright install chromium
 
 - `index.mjs` — the public API surface (re-exports from `src/`). Update this when
   adding or renaming an export.
-- `bin/cli.mjs` — CLI entry: `init`, `generate`, `build`, `kit`.
+- `bin/cli.mjs` — CLI entry: `init`, `generate`, `build`, `kit`, `figure`.
 - `src/` — one module per concern: `build.mjs` (`buildBrand` / `buildKit`),
   `make-mark.mjs`, `make-wordmark.mjs`, `make-sheet.mjs`, `make-web.mjs`,
   `make-cards.mjs`, plus glyph/font helpers.

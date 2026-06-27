@@ -2,8 +2,12 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## 0.3.0 - 2026-06-26
 
+- Add the `figure` command: brand-themed graphics (covers, banners, OG/social
+  cards, diagrams) from a small JSON spec, on the same headless-Chromium +
+  bundled-Inter pipeline as social cards. Templates: `title`, `flow`, `diamond`,
+  `nodes`, and `topology`.
 - Add a `topology` figure template for network and lab diagrams: device-glyph
   nodes (`laptop`, `monitor`, `server`, `database`, `switch`, `router`, `cloud`,
   `phone`) in ringed circles, `star`/`row`/`ring`/`free` layouts (`star` is
@@ -21,6 +25,9 @@ All notable changes to this project are documented here.
 - Enlarge topology link and endpoint labels (the network chip and the
   `fromLabel`/`toLabel` octets) so they stay legible once a wide diagram is
   scaled down to mobile width.
+- Remove the vestigial Python glyph-extraction script and its `requirements.txt`
+  (the OpenType.js + WebAssembly path replaced them in 0.2.0); the npm tarball no
+  longer ships any Python.
 
 ## 0.2.2 - 2026-06-06
 
