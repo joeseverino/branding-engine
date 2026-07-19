@@ -39,11 +39,14 @@ const USAGE =
   '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.\n' +
   '  branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]\n' +
   '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.\n' +
-  '  branding-engine pictogram <glyph> <hex> [--name <n>] [--out <dir>] [--size 512]\n' +
+  '  branding-engine pictogram <glyph> <hex> [--name <n>] [--out <dir>] [--size 512] [--circle-preview]\n' +
+  '  branding-engine pictogram --logo <file.svg|png> <hex> [--fit 0.62] [...same flags]\n' +
   '  branding-engine pictogram --spec <file.json> [--out <dir>]\n' +
-  '    a rounded tile with a stroke glyph (svg + png) — app/vault icons, avatars.\n' +
+  '    a tile with a stroke glyph or an arbitrary logo — app/vault icons, avatars.\n' +
   '    glyphs: the topology set (server, laptop, switch, router, cloud, …) plus home.\n' +
-  '    spec: an array of { glyph, hex, name?, size? }.';
+  '    --logo composites the file as-is in its own colors; --fit caps its share of the tile.\n' +
+  '    --circle-preview also writes <name>-circle.png (many consumers crop icons to a circle).\n' +
+  '    spec: an array of { glyph | logo, hex, name?, size?, fit?, circlePreview? }.';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);
@@ -85,20 +88,27 @@ try {
       const spec = JSON.parse(fs.readFileSync(opt.spec, 'utf8'));
       written = await makePictograms({ spec, outDir: opt.out });
     } else {
-      const [glyph, hex] = pos;
-      if (!glyph || !hex) {
+      const [glyphPos, hexPos] = pos;
+      const glyph = opt.logo ? undefined : glyphPos;
+      const hex = opt.logo ? glyphPos : hexPos;
+      if ((!glyph && !opt.logo) || !hex) {
         console.error(USAGE);
         process.exit(1);
       }
       written = [await makePictogram({
         glyph,
+        logo: opt.logo,
         hex,
         name: opt.name,
         outDir: opt.out,
         size: opt.size ? Number(opt.size) : undefined,
+        fit: opt.fit ? Number(opt.fit) : undefined,
+        circlePreview: Boolean(opt['circle-preview']),
       })];
     }
-    for (const w of written) console.log(`wrote ${w.svg} + ${w.png}`);
+    for (const w of written) {
+      console.log(`wrote ${[w.svg, w.png, w.circle].filter(Boolean).join(' + ')}`);
+    }
   } else {
     console.error(USAGE);
     process.exit(1);

@@ -381,11 +381,19 @@ better than a monogram. Uses the same glyph set as topology figure nodes, plus
 
 ```bash
 branding-engine pictogram server 1e3a8a --name rack --out ./icons
+branding-engine pictogram --logo ./logo.svg ffffff --circle-preview --out ./icons
 branding-engine pictogram --spec pictograms.json --out ./icons
 ```
 
-A spec is an array of `{ glyph, hex, name?, size? }`; `name` defaults to the
-glyph and only affects filenames (`<name>.svg`, `<name>-<size>.png`, default
+Instead of a named glyph, `--logo <file>` composites an arbitrary SVG/PNG
+as-is in its own colors; `--fit` caps the logo's share of the tile (default
+0.62). `--circle-preview` also writes `<name>-circle.png` with a circular
+mask applied — many icon consumers (avatar chips, vault pickers) crop tiles
+to a circle, and the preview verifies the fit before uploading.
+
+A spec is an array of `{ glyph | logo, hex, name?, size?, fit?,
+circlePreview? }`; `name` defaults to the glyph or logo basename and only
+affects filenames (`<name>.svg` for glyph tiles, `<name>-<size>.png`, default
 size 512).
 
 ## Figures
