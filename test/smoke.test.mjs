@@ -174,3 +174,33 @@ test('generateSite supports a root-level public directory for plain HTML sites',
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('pictogramSvg renders a tile and rejects unknown glyphs', async () => {
+  const { pictogramSvg, PICTOGRAMS } = await import('../index.mjs');
+  const svg = pictogramSvg({ glyph: 'home', hex: '#1E3A8A' });
+  assert.match(svg, /rx="112\.6/);
+  assert.match(svg, /stroke="#ffffff"/);
+  assert.ok(Object.keys(PICTOGRAMS).includes('server'));
+  assert.throws(() => pictogramSvg({ glyph: 'nope', hex: '#1E3A8A' }), /Unknown pictogram/);
+});
+
+test('makePictograms writes svg + png per spec entry', async () => {
+  const { makePictograms } = await import('../index.mjs');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-'));
+  try {
+    const written = await makePictograms({
+      spec: [
+        { glyph: 'home', hex: '#1E3A8A' },
+        { glyph: 'server', hex: '#1E3A8A', name: 'rack', size: 256 },
+      ],
+      outDir: dir,
+    });
+    assert.equal(written.length, 2);
+    assert.match(written[0].png, /home-512\.png$/);
+    assert.match(written[1].png, /rack-256\.png$/);
+    const png = await readFile(written[1].png);
+    assert.equal(png[1], 0x50); // 'P' of the PNG magic
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

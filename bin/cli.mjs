@@ -5,10 +5,14 @@
 //   branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only a,b]
 //   branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font f] [--out d] [--only a,b]
 //   branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]
+//   branding-engine pictogram <glyph> <hex> [--name n] [--out <dir>] [--size 512]
+//   branding-engine pictogram --spec <file.json> [--out <dir>]
 // Stages for --only: mark, wordmark, sheet, web, cards (mark includes favicons).
+import fs from 'node:fs';
 import { buildBrand, buildKit } from '../src/build.mjs';
 import { generateSite, initSite } from '../src/site.mjs';
 import { makeFigure } from '../src/make-figure.mjs';
+import { makePictogram, makePictograms } from '../src/make-pictogram.mjs';
 
 function parse(argv) {
   const pos = [];
@@ -34,7 +38,12 @@ const USAGE =
   '  branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font <file>] [--out <dir>] [--only ...]\n' +
   '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.\n' +
   '  branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]\n' +
-  '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.';
+  '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.\n' +
+  '  branding-engine pictogram <glyph> <hex> [--name <n>] [--out <dir>] [--size 512]\n' +
+  '  branding-engine pictogram --spec <file.json> [--out <dir>]\n' +
+  '    a rounded tile with a stroke glyph (svg + png) — app/vault icons, avatars.\n' +
+  '    glyphs: the topology set (server, laptop, switch, router, cloud, …) plus home.\n' +
+  '    spec: an array of { glyph, hex, name?, size? }.';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);
@@ -70,6 +79,26 @@ try {
       process.exit(1);
     }
     await makeFigure({ specPath, out: opt.out, tokensPath: opt.tokens, scale: opt.scale });
+  } else if (cmd === 'pictogram') {
+    let written;
+    if (opt.spec) {
+      const spec = JSON.parse(fs.readFileSync(opt.spec, 'utf8'));
+      written = await makePictograms({ spec, outDir: opt.out });
+    } else {
+      const [glyph, hex] = pos;
+      if (!glyph || !hex) {
+        console.error(USAGE);
+        process.exit(1);
+      }
+      written = [await makePictogram({
+        glyph,
+        hex,
+        name: opt.name,
+        outDir: opt.out,
+        size: opt.size ? Number(opt.size) : undefined,
+      })];
+    }
+    for (const w of written) console.log(`wrote ${w.svg} + ${w.png}`);
   } else {
     console.error(USAGE);
     process.exit(1);

@@ -8,7 +8,9 @@ export { makeSheet } from './src/make-sheet.mjs';
 export { makeWeb } from './src/make-web.mjs';
 export { makeCards } from './src/make-cards.mjs';
 export { makeFigure } from './src/make-figure.mjs';
+export { makePictogram, makePictograms } from './src/make-pictogram.mjs';
 export { markSvg } from './src/lib/mark.mjs';
+export { pictogramSvg, PICTOGRAMS } from './src/lib/pictogram.mjs';
 export { wordmarkSvg } from './src/lib/wordmark.mjs';
 export { normalizeGlyph } from './src/lib/identity.mjs';
 // Lower-level primitives for embedding the renderers in a custom pipeline (e.g.

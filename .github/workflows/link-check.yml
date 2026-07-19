@@ -29,6 +29,7 @@ jobs:
             --no-progress
             --verbose
             --accept 200,204,206,301,302,303,307,308,403,429,999
+            --exclude 'img\.shields\.io'
             README.md
             CONTRIBUTING.md
             SECURITY.md

@@ -372,6 +372,22 @@ Syntax:
 branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [options]
 ```
 
+## Pictogram Tiles
+
+A rounded tile with a centered stroke glyph — the pictogram counterpart of the
+letterform mark, for app icons, vault icons, and avatars where a picture reads
+better than a monogram. Uses the same glyph set as topology figure nodes, plus
+`home`. No browser needed.
+
+```bash
+branding-engine pictogram server 1e3a8a --name rack --out ./icons
+branding-engine pictogram --spec pictograms.json --out ./icons
+```
+
+A spec is an array of `{ glyph, hex, name?, size? }`; `name` defaults to the
+glyph and only affects filenames (`<name>.svg`, `<name>-<size>.png`, default
+size 512).
+
 ## Figures
 
 Designed, brand-themed graphics for writeup covers, README banners, and OG/social
@@ -546,7 +562,9 @@ Main exports:
 - `makeSheet(options)`
 - `makeWeb(options)`
 - `makeCards(options)`
+- `makePictogram(options)` / `makePictograms(options)`
 - `markSvg(options)`
+- `pictogramSvg(options)` / `PICTOGRAMS`
 - `wordmarkSvg(options)`
 - `normalizeGlyph(glyph)`
 - `renderCard(browser, options)`

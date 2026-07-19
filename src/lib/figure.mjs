@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import { esc } from './html.mjs';
 import { fontFaceCss, withPage } from './render.mjs';
 import { darken, mix, normalizeHex } from './color.mjs';
+import { PICTOGRAMS, pictogramGlyphSvg } from './pictogram.mjs';
 
 // Named canvas presets (logical px). Output is rendered at `scale`x for crisp
 // text. `size` in a spec may also be an explicit [width, height].
@@ -215,22 +216,12 @@ function tplNodes(spec, W, H, c) {
 // look — an icon per device, a node label + optional address, and links that
 // carry a network name / IP. `layout` is 'row' (linear) or 'ring' (star around
 // an optional `center` node). Stroke-style glyphs inherit the node's color.
-const GLYPHS = {
-  laptop: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M1.5 19.5h21L20.5 16h-17l-2 3.5Z"/>',
-  monitor: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
-  desktop: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
-  server: '<rect x="4" y="3" width="16" height="7" rx="1.5"/><rect x="4" y="14" width="16" height="7" rx="1.5"/><path d="M7.5 6.5h.01M7.5 17.5h.01"/>',
-  database: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.66 3.1 3 7 3s7-1.34 7-3V6"/><path d="M5 12c0 1.66 3.1 3 7 3s7-1.34 7-3"/>',
-  switch: '<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M7.5 10l-2.5 2 2.5 2M16.5 10l2.5 2-2.5 2M5.5 12h6M12.5 12h6"/>',
-  router: '<rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 16h.01M12 10V5m0 0 3 2.2M12 5 9 7.2"/>',
-  cloud: '<path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.6 3.5 3.5 0 0 0 7 18Z"/>',
-  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
-};
+// Device glyphs live in lib/pictogram.mjs (shared with standalone pictogram
+// tiles); topology nodes embed them via the same stroke wrapper.
+const GLYPHS = PICTOGRAMS;
 
 function glyphSvg(name, size, color) {
-  const g = GLYPHS[name] || GLYPHS.server;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" ` +
-    `stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${g}</svg>`;
+  return pictogramGlyphSvg(name, size, color);
 }
 
 // A ringed device node centered on (x, y). `role` 'anchor'/'attacker' fills the
