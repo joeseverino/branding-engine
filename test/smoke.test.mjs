@@ -204,3 +204,41 @@ test('makePictograms writes svg + png per spec entry', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('makePictogram composites a logo file and writes a circle preview', async () => {
+  const { makePictogram } = await import('../index.mjs');
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-logo-'));
+  try {
+    const logoPath = path.join(dir, 'logo.svg');
+    await writeFile(
+      logoPath,
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" fill="#e00"/></svg>',
+    );
+    const written = await makePictogram({
+      logo: logoPath,
+      hex: '#ffffff',
+      name: 'brand',
+      outDir: dir,
+      circlePreview: true,
+    });
+    assert.match(written.png, /brand-512\.png$/);
+    assert.match(written.circle, /brand-circle\.png$/);
+    assert.equal(written.svg, undefined); // logo tiles are raster-only
+    const png = await readFile(written.png);
+    assert.equal(png[1], 0x50);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('makePictogram rejects glyph+logo together and missing logo files', async () => {
+  const { makePictogram } = await import('../index.mjs');
+  await assert.rejects(
+    () => makePictogram({ glyph: 'home', logo: 'x.svg', hex: '#ffffff' }),
+    /either a glyph or a logo/,
+  );
+  await assert.rejects(
+    () => makePictogram({ logo: '/nonexistent/logo.svg', hex: '#ffffff' }),
+    /not found/,
+  );
+});
