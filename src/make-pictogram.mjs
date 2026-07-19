@@ -1,19 +1,59 @@
-// Render pictogram tiles: a brand-colored tile with a centered graphic, as
-// PNG (plus SVG when the graphic is a built-in glyph). The pictogram
-// counterpart of make-mark (letterform tiles) — for app icons, vault icons,
-// avatars, and anywhere a picture reads better than a monogram. The graphic
-// is either a named stroke glyph from the shared set or an arbitrary logo
-// file (`logo`), composited as-is in its own colors. No browser needed.
+// Render pictogram tiles: a colored tile with a centered graphic, as PNG
+// (plus SVG for vector-native tiles). The pictogram counterpart of make-mark's
+// kit stage — for app icons, vault icons, avatars, and anywhere a picture (or
+// a couple of letters) reads better than a full kit. No browser needed.
+//
+// The graphic is exactly one of:
+//   glyph  — a named stroke glyph from the shared set (lib/pictogram.mjs)
+//   text   — 1-3 letters/digits set as a letterform tile (lib/mark.mjs)
+//   logo   — an arbitrary SVG/PNG file, composited as-is or recolored (tint)
+//
+// Colors may be hex values or token names (accent, deep, onAccent, ink,
+// paper) resolved from a tokens.css (`tokensPath`) merged over the engine
+// defaults — so brand color stays single-source even in one-off commands.
+//
+// `variants: ['light', 'dark']` renders the standard pair from one input:
+//   light — colored artwork on a paper tile   (everyday surfaces)
+//   dark  — white artwork on a colored tile   (elevated / admin surfaces)
 //
 // Many icon consumers (avatar chips, vault pickers) crop tiles to a circle;
-// `circlePreview` writes an additional `<name>-circle.png` with the circular
-// mask applied so the fit can be verified before uploading anywhere.
+// `circlePreview` writes `<name>-circle.png` with the mask applied so fit can
+// be verified before uploading. It defaults ON for logo tiles.
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { pictogramSvg } from './lib/pictogram.mjs';
+import { markSvg } from './lib/mark.mjs';
 import { normalizeHex } from './lib/color.mjs';
+import { readTokens } from './make-figure.mjs';
+
+const DEFAULT_TOKENS = {
+  accent: '#1E3A8A',
+  deep: '#14245C',
+  onAccent: '#ffffff',
+  ink: '#0b0620',
+  paper: '#ffffff',
+};
+
+// A color argument is a hex value or a token name.
+export function resolveColor(value, tokens = {}) {
+  if (/^#?[0-9a-fA-F]{6}$/.test(value || '')) return normalizeHex(value);
+  const table = { ...DEFAULT_TOKENS, ...tokens };
+  if (table[value]) return normalizeHex(table[value]);
+  throw new Error(
+    `Unknown color "${value}". Use a hex value or a token name: ${Object.keys(table).join(', ')}.`,
+  );
+}
+
+// Recolor single-color SVG artwork: every fill/stroke that isn't "none"
+// becomes `hex`. Works for monochrome logos (attribute and inline-style
+// forms); multi-color artwork should be tinted upstream instead.
+export function tintSvg(svgText, hex) {
+  return svgText
+    .replace(/(fill|stroke)="(?!none")[^"]*"/g, `$1="${hex}"`)
+    .replace(/(fill|stroke)\s*:\s*(?!none)[^;"']+/g, `$1:${hex}`);
+}
 
 function circleMask(size) {
   const r = size / 2;
@@ -23,57 +63,46 @@ function circleMask(size) {
   );
 }
 
-async function writeCirclePreview(iconPng, outDir, base, size) {
-  const previewPath = path.join(outDir, `${base}-circle.png`);
-  await sharp(iconPng)
-    .composite([{ input: circleMask(size), blend: 'dest-in' }])
-    .png()
-    .toFile(previewPath);
-  return previewPath;
+function tileSvg(size, bg) {
+  const radius = (size * 0.22).toFixed(2);
+  return Buffer.from(
+    `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${size}" height="${size}" rx="${radius}" fill="${bg}"/></svg>`,
+  );
 }
 
-// Render one tile. Provide either `glyph` (a name from the shared pictogram
-// set) or `logo` (a path to an SVG/PNG composited in its own colors). `name`
-// defaults to the glyph or the logo's basename and only affects filenames:
-// <outDir>/<name>.svg (glyph tiles only) and <name>-<size>.png. `fit` is the
-// fraction of the tile the logo may occupy (longest side, default 0.62).
-export async function makePictogram({
-  glyph,
-  logo,
-  hex,
-  name,
-  outDir = '.',
-  size = 512,
-  fit = 0.62,
-  circlePreview = false,
-}) {
-  if (!glyph && !logo) throw new Error('Provide a glyph name or a logo file.');
-  if (glyph && logo) throw new Error('Provide either a glyph or a logo, not both.');
-  const fill = normalizeHex(hex);
-  const base = name || glyph || path.parse(logo).name;
-  fs.mkdirSync(outDir, { recursive: true });
+// Render one colorway to <outDir>/<base>[-<suffix>]-<size>.png (+ .svg for
+// vector-native glyph/text tiles).
+async function renderOne({ kind, glyph, text, logoPath, bg, fg, size, fit, outDir, base, circlePreview }) {
   const pngPath = path.join(outDir, `${base}-${size}.png`);
   const out = { png: pngPath };
 
-  if (glyph) {
-    const svg = pictogramSvg({ glyph, hex: fill, size });
+  if (kind === 'glyph') {
+    const svg = pictogramSvg({ glyph, hex: bg, color: fg, size });
+    out.svg = path.join(outDir, `${base}.svg`);
+    fs.writeFileSync(out.svg, svg + '\n');
+    await sharp(Buffer.from(svg)).png().toFile(pngPath);
+  } else if (kind === 'text') {
+    const svg = markSvg({ size, bg, fg, glyph: text });
     out.svg = path.join(outDir, `${base}.svg`);
     fs.writeFileSync(out.svg, svg + '\n');
     await sharp(Buffer.from(svg)).png().toFile(pngPath);
   } else {
-    if (!fs.existsSync(logo)) throw new Error(`Logo file not found: ${logo}`);
-    const radius = size * 0.22;
-    const tile = Buffer.from(
-      `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">` +
-      `<rect width="${size}" height="${size}" rx="${radius}" fill="${fill}"/></svg>`,
-    );
+    let input;
+    if (fg && path.extname(logoPath).toLowerCase() === '.svg') {
+      input = Buffer.from(tintSvg(fs.readFileSync(logoPath, 'utf8'), fg));
+    } else if (fg) {
+      throw new Error('Tinting requires SVG artwork; PNG logos render as-is.');
+    } else {
+      input = logoPath;
+    }
     const box = Math.round(size * fit);
-    const art = await sharp(logo, { density: 300 })
+    const art = await sharp(input, { density: 300 })
       .resize({ width: box, height: box, fit: 'inside' })
       .png()
       .toBuffer();
     const meta = await sharp(art).metadata();
-    await sharp(tile)
+    await sharp(tileSvg(size, bg))
       .composite([{
         input: art,
         left: Math.round((size - meta.width) / 2),
@@ -84,22 +113,82 @@ export async function makePictogram({
   }
 
   if (circlePreview) {
-    out.circle = await writeCirclePreview(pngPath, outDir, base, size);
+    out.circle = path.join(outDir, `${base}-circle.png`);
+    await sharp(out.png)
+      .composite([{ input: circleMask(size), blend: 'dest-in' }])
+      .png()
+      .toFile(out.circle);
   }
   return out;
 }
 
-// Render a batch from a spec: an array of
-// { glyph | logo, hex, name?, size?, fit?, circlePreview? }.
-export async function makePictograms({ spec, outDir = '.' }) {
+// Render one tile (or a light/dark variant pair). See module docs for fields.
+export async function makePictogram({
+  glyph,
+  text,
+  logo,
+  hex,
+  tint,
+  name,
+  outDir = '.',
+  size = 512,
+  fit = 0.62,
+  variants,
+  circlePreview,
+  tokens,
+  tokensPath,
+}) {
+  const chosen = [glyph && 'glyph', text && 'text', logo && 'logo'].filter(Boolean);
+  if (chosen.length !== 1) {
+    throw new Error('Provide exactly one of: a glyph name, --text, or --logo.');
+  }
+  const kind = chosen[0];
+  if (kind === 'logo' && !fs.existsSync(logo)) throw new Error(`Logo file not found: ${logo}`);
+
+  const tok = { ...(tokens || {}), ...readTokens(tokensPath) };
+  const color = resolveColor(hex, tok);
+  const paper = resolveColor('paper', tok);
+  const onColor = resolveColor('onAccent', tok);
+  const base = name || glyph || text?.toLowerCase() || path.parse(logo).name;
+  const preview = circlePreview ?? (kind === 'logo');
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const shared = { kind, glyph, text, logoPath: logo, size, fit, outDir, circlePreview: preview };
+
+  if (!variants || variants.length === 0) {
+    // Single tile: colored tile, white artwork — except logos, which render
+    // in their own colors (or `tint`) on the given tile color.
+    const fg = kind === 'logo' ? (tint ? resolveColor(tint, tok) : undefined) : onColor;
+    return renderOne({ ...shared, bg: color, fg, base });
+  }
+
+  const list = Array.isArray(variants) ? variants : String(variants).split(',');
+  if (kind === 'logo' && !tint && list.length > 0) {
+    throw new Error('Variant pairs for --logo require --tint (monochrome artwork).');
+  }
+  const out = {};
+  for (const variant of list.map((v) => v.trim())) {
+    if (variant === 'light') {
+      out.light = await renderOne({ ...shared, bg: paper, fg: color, base: `${base}-light` });
+    } else if (variant === 'dark') {
+      out.dark = await renderOne({ ...shared, bg: color, fg: onColor, base: `${base}-dark` });
+    } else {
+      throw new Error(`Unknown variant "${variant}". Valid: light, dark.`);
+    }
+  }
+  return out;
+}
+
+// Render a batch from a spec: an array of makePictogram inputs.
+export async function makePictograms({ spec, outDir = '.', tokensPath }) {
   if (!Array.isArray(spec) || spec.length === 0) {
     throw new Error(
-      'Pictogram spec must be a non-empty array of { glyph | logo, hex, name?, size?, fit?, circlePreview? }.',
+      'Pictogram spec must be a non-empty array of { glyph | text | logo, hex, ... } entries.',
     );
   }
   const written = [];
   for (const entry of spec) {
-    written.push(await makePictogram({ ...entry, outDir }));
+    written.push(await makePictogram({ tokensPath, outDir, ...entry }));
   }
   return written;
 }

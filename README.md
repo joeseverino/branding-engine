@@ -385,16 +385,27 @@ branding-engine pictogram --logo ./logo.svg ffffff --circle-preview --out ./icon
 branding-engine pictogram --spec pictograms.json --out ./icons
 ```
 
-Instead of a named glyph, `--logo <file>` composites an arbitrary SVG/PNG
-as-is in its own colors; `--fit` caps the logo's share of the tile (default
-0.62). `--circle-preview` also writes `<name>-circle.png` with a circular
-mask applied — many icon consumers (avatar chips, vault pickers) crop tiles
-to a circle, and the preview verifies the fit before uploading.
+Instead of a named glyph: `--text ABC` sets 1-3 letters as a letterform tile,
+and `--logo <file>` composites an arbitrary SVG/PNG — as-is in its own colors,
+or recolored with `--tint <color>` (monochrome SVG artwork only). `--fit` caps
+the logo's share of the tile (default 0.62).
 
-A spec is an array of `{ glyph | logo, hex, name?, size?, fit?,
-circlePreview? }`; `name` defaults to the glyph or logo basename and only
-affects filenames (`<name>.svg` for glyph tiles, `<name>-<size>.png`, default
-size 512).
+Colors are hex values or token names (`accent`, `deep`, `onAccent`, `ink`,
+`paper`) resolved from `--tokens <tokens.css>` over the engine defaults.
+
+`--variants light,dark` renders the standard pair from one input — colored
+artwork on a paper tile (light) and white artwork on the colored tile (dark) —
+as `<name>-light-*` / `<name>-dark-*`. Logo variants require `--tint`.
+
+`--circle-preview` also writes `<name>-circle.png` with a circular mask
+applied — many icon consumers (avatar chips, vault pickers) crop tiles to a
+circle, and the preview verifies the fit before uploading. It defaults ON for
+logo tiles (`--no-circle-preview` disables).
+
+A spec is an array of `{ glyph | text | logo, hex, name?, size?, fit?, tint?,
+variants?, circlePreview? }`; `name` defaults to the glyph, text, or logo
+basename and only affects filenames (`<name>.svg` for vector tiles,
+`<name>-<size>.png`, default size 512).
 
 ## Figures
 
@@ -571,6 +582,7 @@ Main exports:
 - `makeWeb(options)`
 - `makeCards(options)`
 - `makePictogram(options)` / `makePictograms(options)`
+- `resolveColor(value, tokens)` / `tintSvg(svgText, hex)`
 - `markSvg(options)`
 - `pictogramSvg(options)` / `PICTOGRAMS`
 - `wordmarkSvg(options)`
