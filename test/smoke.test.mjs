@@ -235,10 +235,66 @@ test('makePictogram rejects glyph+logo together and missing logo files', async (
   const { makePictogram } = await import('../index.mjs');
   await assert.rejects(
     () => makePictogram({ glyph: 'home', logo: 'x.svg', hex: '#ffffff' }),
-    /either a glyph or a logo/,
+    /exactly one of/,
   );
   await assert.rejects(
     () => makePictogram({ logo: '/nonexistent/logo.svg', hex: '#ffffff' }),
     /not found/,
   );
+});
+
+test('makePictogram renders text tiles, token colors, and variant pairs', async () => {
+  const { makePictogram, resolveColor } = await import('../index.mjs');
+  assert.equal(resolveColor('accent'), '#1E3A8A');
+  assert.throws(() => resolveColor('mauve'), /Unknown color/);
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-text-'));
+  try {
+    const pair = await makePictogram({
+      text: 'HQ',
+      hex: 'accent',
+      outDir: dir,
+      variants: ['light', 'dark'],
+      circlePreview: true,
+    });
+    assert.match(pair.light.png, /hq-light-512\.png$/);
+    assert.match(pair.dark.png, /hq-dark-512\.png$/);
+    assert.ok(pair.light.svg.endsWith('hq-light.svg'));
+    assert.ok(pair.dark.circle.endsWith('hq-dark-circle.png'));
+    const lightSvg = await readFile(pair.light.svg, 'utf8');
+    assert.match(lightSvg, /fill="#ffffff"/); // paper tile
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('makePictogram tints monochrome logos and defaults circle preview on', async () => {
+  const { makePictogram, tintSvg } = await import('../index.mjs');
+  assert.equal(
+    tintSvg('<path fill="#FFF" stroke="#000"/>', '#0086ea'),
+    '<path fill="#0086ea" stroke="#0086ea"/>',
+  );
+  assert.match(tintSvg('<svg fill="none"><path fill="#FFF"/></svg>', '#0086ea'), /fill="none"/);
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-tint-'));
+  try {
+    const logoPath = path.join(dir, 'logo.svg');
+    await writeFile(
+      logoPath,
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="#FFF"/></svg>',
+    );
+    const one = await makePictogram({ logo: logoPath, hex: 'paper', tint: 'accent', outDir: dir });
+    assert.ok(one.circle, 'logo tiles default to writing a circle preview');
+
+    const pair = await makePictogram({
+      logo: logoPath, hex: 'deep', tint: 'deep', outDir: dir, variants: 'light,dark', name: 'mark',
+    });
+    assert.match(pair.dark.png, /mark-dark-512\.png$/);
+    await assert.rejects(
+      () => makePictogram({ logo: logoPath, hex: 'deep', outDir: dir, variants: ['dark'] }),
+      /require --tint/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

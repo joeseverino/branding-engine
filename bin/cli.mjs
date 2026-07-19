@@ -39,14 +39,17 @@ const USAGE =
   '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.\n' +
   '  branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]\n' +
   '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.\n' +
-  '  branding-engine pictogram <glyph> <hex> [--name <n>] [--out <dir>] [--size 512] [--circle-preview]\n' +
-  '  branding-engine pictogram --logo <file.svg|png> <hex> [--fit 0.62] [...same flags]\n' +
-  '  branding-engine pictogram --spec <file.json> [--out <dir>]\n' +
-  '    a tile with a stroke glyph or an arbitrary logo — app/vault icons, avatars.\n' +
+  '  branding-engine pictogram <glyph> <color> [--name <n>] [--out <dir>] [--size 512] [--circle-preview]\n' +
+  '  branding-engine pictogram --text <ABC> <color> [...same flags]\n' +
+  '  branding-engine pictogram --logo <file.svg|png> <color> [--tint <color>] [--fit 0.62] [...same flags]\n' +
+  '  branding-engine pictogram --spec <file.json> [--out <dir>] [--tokens <tokens.css>]\n' +
+  '    a tile with a stroke glyph, 1-3 letters, or an arbitrary logo — app/vault icons, avatars.\n' +
   '    glyphs: the topology set (server, laptop, switch, router, cloud, …) plus home.\n' +
-  '    --logo composites the file as-is in its own colors; --fit caps its share of the tile.\n' +
-  '    --circle-preview also writes <name>-circle.png (many consumers crop icons to a circle).\n' +
-  '    spec: an array of { glyph | logo, hex, name?, size?, fit?, circlePreview? }.';
+  '    <color> is hex or a token name (accent, deep, onAccent, ink, paper) via --tokens.\n' +
+  '    --tint recolors monochrome SVG artwork. --variants light,dark renders the standard\n' +
+  '    pair: colored art on paper (light) and white art on the color (dark).\n' +
+  '    --circle-preview writes <name>-circle.png (crop check; default on for --logo).\n' +
+  '    spec: an array of { glyph | text | logo, hex, name?, size?, fit?, tint?, variants?, circlePreview? }.';
 
 const [cmd, ...rest] = process.argv.slice(2);
 const { pos, opt } = parse(rest);
@@ -86,27 +89,33 @@ try {
     let written;
     if (opt.spec) {
       const spec = JSON.parse(fs.readFileSync(opt.spec, 'utf8'));
-      written = await makePictograms({ spec, outDir: opt.out });
+      written = await makePictograms({ spec, outDir: opt.out, tokensPath: opt.tokens });
     } else {
+      const external = opt.logo || opt.text;
       const [glyphPos, hexPos] = pos;
-      const glyph = opt.logo ? undefined : glyphPos;
-      const hex = opt.logo ? glyphPos : hexPos;
-      if ((!glyph && !opt.logo) || !hex) {
+      const glyph = external ? undefined : glyphPos;
+      const hex = external ? glyphPos : hexPos;
+      if ((!glyph && !external) || !hex) {
         console.error(USAGE);
         process.exit(1);
       }
       written = [await makePictogram({
         glyph,
+        text: opt.text,
         logo: opt.logo,
         hex,
+        tint: opt.tint,
         name: opt.name,
         outDir: opt.out,
         size: opt.size ? Number(opt.size) : undefined,
         fit: opt.fit ? Number(opt.fit) : undefined,
-        circlePreview: Boolean(opt['circle-preview']),
+        variants: opt.variants,
+        circlePreview: opt['no-circle-preview'] ? false : (opt['circle-preview'] ? true : undefined),
+        tokensPath: opt.tokens,
       })];
     }
-    for (const w of written) {
+    const flat = written.flatMap((w) => (w.png ? [w] : Object.values(w)));
+    for (const w of flat) {
       console.log(`wrote ${[w.svg, w.png, w.circle].filter(Boolean).join(' + ')}`);
     }
   } else {
