@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## 0.7.0 - 2026-08-09
 
 - Add `renderMarkSet`, the shared in-memory mark contract now used by both
   built-in generators and available to consumers with custom asset layouts.
