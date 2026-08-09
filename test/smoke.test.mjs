@@ -10,6 +10,7 @@ import {
   initSite,
   markSvg,
   normalizeGlyph,
+  renderMarkSet,
 } from '../index.mjs';
 import { extractGlyphs } from '../src/lib/extract-glyphs.mjs';
 
@@ -39,6 +40,20 @@ test('markSvg renders balanced one-, two-, and three-character marks', () => {
     assert.equal((svg.match(/<path /g) || []).length, glyph.length);
     assert.doesNotMatch(svg, /NaN|Infinity/);
   }
+});
+
+test('renderMarkSet emits one reusable browser and brand asset contract', async () => {
+  const rendered = await renderMarkSet({ hex: '#2563eb', onColor: '#ffffff', glyph: 'a3x' });
+
+  assert.deepEqual(Object.keys(rendered), [
+    'faviconSvg', 'favicon32', 'favicon192', 'appleTouchIcon', 'faviconIco',
+    'markSvg', 'mark512', 'mark1024', 'markTransparent', 'markTransparentInverse',
+  ]);
+  assert.match(rendered.faviconSvg, /viewBox="0 0 64 64"/);
+  assert.match(rendered.markSvg, /viewBox="0 0 512 512"/);
+  assert.equal(rendered.faviconIco.readUInt16LE(2), 1);
+  assert.equal(rendered.faviconIco.readUInt16LE(4), 2);
+  for (const value of Object.values(rendered)) assert.ok(value.length > 0);
 });
 
 test('extractGlyphs creates a cache entirely in Node', async () => {

@@ -5,14 +5,11 @@
 //
 // This path is pure vector + sharp, so it needs no headless browser. The richer
 // kit (wordmark lockups, social cards, brand sheet) comes from `build` / `kit`.
-import { Buffer } from 'node:buffer';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
-import { markSvg } from './lib/mark.mjs';
 import { darken, normalizeHex } from './lib/color.mjs';
 import { normalizeGlyph } from './lib/identity.mjs';
-import { pngsToIco } from './lib/ico.mjs';
+import { renderMarkSet } from './render-mark-set.mjs';
 
 const DEFAULT_CONFIG = {
   name: 'My Site',
@@ -77,19 +74,14 @@ export async function generateSite({ config, publicDir = 'public', cwd = process
   const pub = path.resolve(cwd, publicDir);
   mkdirSync(pub, { recursive: true });
 
-  const rounded = markSvg({ size: 512, rounded: true, bg: accent, fg: onAccent, glyph });
-  const square = markSvg({ size: 512, rounded: false, bg: accent, fg: onAccent, glyph });
-  const png = (svg, size) => sharp(Buffer.from(svg)).resize(size, size).png().toBuffer();
+  const rendered = await renderMarkSet({ hex: accent, onColor: onAccent, glyph });
   const write = (name_, buf) => writeFileSync(path.join(pub, name_), buf);
 
-  write('favicon.svg', markSvg({ size: 64, rounded: true, bg: accent, fg: onAccent, glyph }));
-  write('favicon-32.png', await png(rounded, 32));
-  write('favicon-192.png', await png(rounded, 192));
-  write('apple-touch-icon.png', await png(square, 180));
-  write('favicon.ico', pngsToIco([
-    { size: 16, buffer: await png(rounded, 16) },
-    { size: 32, buffer: await png(rounded, 32) },
-  ]));
+  write('favicon.svg', rendered.faviconSvg);
+  write('favicon-32.png', rendered.favicon32);
+  write('favicon-192.png', rendered.favicon192);
+  write('apple-touch-icon.png', rendered.appleTouchIcon);
+  write('favicon.ico', rendered.faviconIco);
   write('site.webmanifest', JSON.stringify({
     name,
     short_name: glyph,

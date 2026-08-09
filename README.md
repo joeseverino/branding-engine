@@ -70,7 +70,7 @@ The complete input and committed generated output are in
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 20.9 or newer
 - `sharp`, OpenType.js, and the WOFF2 decoder, installed automatically
 - Optional: `@playwright/test` plus Chromium for brand sheets and social cards
 
@@ -549,6 +549,7 @@ import {
   generateSite,
   markSvg,
   normalizeGlyph,
+  renderMarkSet,
   wordmarkSvg,
 } from 'branding-engine';
 
@@ -563,6 +564,7 @@ await buildKit({
 
 const glyph = normalizeGlyph('a3x'); // "A3X"
 const mark = markSvg({ size: 64, bg: '#FF5733', glyph });
+const markSet = await renderMarkSet({ hex: '#FF5733', glyph });
 const lockup = wordmarkSvg({
   tileHex: '#FF5733',
   text: 'Acme',
@@ -577,6 +579,8 @@ Main exports:
 - `initSite(options)`
 - `generateSite(options)`
 - `makeMark(options)`
+- `renderMarkSet(options)` — emit the canonical SVG, PNG, and ICO buffers once
+  for consumers that own a custom filesystem layout
 - `makeWordmark(options)`
 - `makeSheet(options)`
 - `makeWeb(options)`

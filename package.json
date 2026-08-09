@@ -23,7 +23,7 @@
     "index.mjs"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9"
   },
   "repository": {
     "type": "git",
@@ -47,11 +47,19 @@
   },
   "dependencies": {
     "opentype.js": "^2.0.0",
-    "sharp": "0.34.5",
+    "sharp": "^0.35.3",
     "wawoff2": "^2.0.1"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@playwright/test": "^1.60.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   },
   "license": "MIT"
 }

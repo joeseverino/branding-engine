@@ -3,6 +3,7 @@
 export { buildBrand, buildKit } from './src/build.mjs';
 export { initSite, generateSite } from './src/site.mjs';
 export { makeMark } from './src/make-mark.mjs';
+export { renderMarkSet } from './src/render-mark-set.mjs';
 export { makeWordmark } from './src/make-wordmark.mjs';
 export { makeSheet } from './src/make-sheet.mjs';
 export { makeWeb } from './src/make-web.mjs';
