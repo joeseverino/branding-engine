@@ -9,10 +9,24 @@ updates:
     groups:
       production:
         dependency-type: production
-      optional:
+        update-types:
+          - minor
+          - patch
+      development:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
