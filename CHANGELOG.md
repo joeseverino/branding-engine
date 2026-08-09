@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+- Add `renderMarkSet`, the shared in-memory mark contract now used by both
+  built-in generators and available to consumers with custom asset layouts.
+- Upgrade Sharp to the patched 0.35 line so consumers no longer need to
+  override branding-engine's image runtime to remediate inherited libvips
+  vulnerabilities.
+- Declare Playwright as an optional peer instead of an optional runtime
+  dependency. Browser-backed sheets and cards still provide an actionable
+  install error, while mark-only consumers no longer download browser tooling.
+
 ## 0.3.0 - 2026-06-26
 
 - Add the `figure` command: brand-themed graphics (covers, banners, OG/social
