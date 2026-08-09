@@ -70,7 +70,7 @@ The complete input and committed generated output are in
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 20.9 or newer
 - `sharp`, OpenType.js, and the WOFF2 decoder, installed automatically
 - Optional: `@playwright/test` plus Chromium for brand sheets and social cards
 
