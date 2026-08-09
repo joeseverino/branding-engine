@@ -8,7 +8,7 @@ is the operational quick reference an agent needs to make a safe change.
 
 `branding-engine` generates a brand kit — favicons, vector/raster marks,
 wordmark lockups, brand sheets, social cards, web manifests, and CSS tokens —
-from one accent color and a 1–3 character glyph. Pure ESM, Node 18+. Marks and
+from one accent color and a 1–3 character glyph. Pure ESM, Node 20.9+. Marks and
 wordmarks are built from real font outlines entirely in Node (OpenType.js + a
 WebAssembly WOFF2 decoder); there is no Python, fonttools, or native font
 dependency.
