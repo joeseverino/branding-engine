@@ -12,6 +12,13 @@ export const PICTOGRAMS = {
   cloud: '<path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.6 3.5 3.5 0 0 0 7 18Z"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
   home: '<path d="M3 10l9-7 9 7v10a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 20z"/><path d="M9 21.8V12h6v9.8"/>',
+  // Concept glyphs. The set above is device-shaped, which covers topology
+  // figures but leaves nothing for a tile that stands for access, protection,
+  // or a group of applications — the vault and app tiles that are not a box in
+  // a rack. Same 24-unit grid and stroke conventions as the devices.
+  key: '<circle cx="7.5" cy="12" r="3.75"/><path d="M11.25 12h9.25M17.5 12v3.25M20.5 12v2.5"/>',
+  shield: '<path d="M12 2.8 4.6 6v6.1c0 4.4 3.1 7.8 7.4 9.1 4.3-1.3 7.4-4.7 7.4-9.1V6L12 2.8Z"/>',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
 };
 
 // A bare stroke glyph <svg> (no tile) — what topology nodes embed.
