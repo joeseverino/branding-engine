@@ -186,7 +186,10 @@ function peel(s) {
 // Group ids carry a character an unquoted name can't start with.
 const groupId = (n) => `#g${n}`;
 
-const MERMAID = /(<-+>|-+>|<-+|<>|=>)|^[<>]|[<>]$/;
+// An arrow written without spaces ("A->B", "A<>B", "A=>B"), or one hanging off
+// either end of a name.
+const looksLikeArrow = (name) => ['->', '<-', '<>', '=>'].some((op) => name.includes(op))
+  || /^[<>]|[<>]$/.test(name);
 
 export function parseFig(text) {
   const errors = [];
@@ -207,7 +210,7 @@ export function parseFig(text) {
     const quoted = rawName.trim().startsWith('"');
     const name = unquote(rawName);
     if (!checkName(name, where)) return null;
-    if (!quoted && MERMAID.test(name)) {
+    if (!quoted && looksLikeArrow(name)) {
       errors.push(`${where}: "${name}" looks like a link written without spaces; put spaces around the arrow ("A -> B"), or quote the name`);
       return null;
     }

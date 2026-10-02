@@ -443,7 +443,7 @@ Secret store > Cloud VM: one vault
 app-server > Identity provider, Container UI: inject
 ```
 
-![Secrets flow rendered from the .fig above](https://raw.githubusercontent.com/joeseverino/branding-engine/main/examples/figures/secrets-flow.png)
+![Secrets flow rendered from the .fig above](./examples/figures/secrets-flow.png)
 
 - **Nodes**: `Name [props]`. The name is the id and the default label; a name first used in a
   connection becomes a plain node. Props are `key: value` pairs or flags: `anchor`, `attacker`,
