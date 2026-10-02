@@ -1,7 +1,7 @@
 # Box nodes and a dark theme for a build pipeline.
 theme: dark
 title: From Markdown to the edge
-subtitle: jseverino.com
+subtitle: static site
 
 Vault [box, icon: file, note: Obsidian]
 GitHub [dashed] {

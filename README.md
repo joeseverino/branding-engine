@@ -426,42 +426,60 @@ every label, keeps labels off lines, draws groups, and fits the result to the fr
 
 ```text
 title: Secrets flow
-subtitle: 1Password
+subtitle: secret store
 
-Mac [icon: laptop, note: Touch ID]
-1Password [icon: key, anchor]
-Homelab [dashed] {
-  homelab-server [icon: server, note: Connect on loopback]
-  Pocket ID [icon: lock]
+Laptop [icon: laptop, note: Touch ID]
+Secret store [icon: key, anchor]
+Private network [dashed] {
+  app-server [icon: server, note: renders hourly]
+  Identity provider [icon: lock]
+  Container UI [icon: container]
 }
-Mac <> 1Password: SSH · sudo [dashed]
-1Password > homelab-server: read-only tokens
-homelab-server > Pocket ID
+Cloud VM [icon: cloud, note: service account]
+
+Laptop <> Secret store: SSH · sudo [dashed]
+Secret store > app-server: read-only token
+Secret store > Cloud VM: one vault
+app-server > Identity provider, Container UI: inject
 ```
 
-![Secrets flow rendered from the .fig above](./examples/figures/secrets-flow.png)
+![Secrets flow rendered from the .fig above](https://raw.githubusercontent.com/joeseverino/branding-engine/main/examples/figures/secrets-flow.png)
 
 - **Nodes**: `Name [props]`. The name is the id and the default label; a name first used in a
   connection becomes a plain node. Props are `key: value` pairs or flags: `anchor`, `attacker`,
-  `muted` (role), `box` (shape).
+  `muted` (role), `box` (shape). Quote a name that holds an arrow, a comma or `: `
+  (`"Build > Test"`).
 - **Arrows** (spaces around them): `>` `<` `<>` `-` are solid, `-->` `<--` `<-->` `--` are dashed.
   `->`, `<-`, `<->` also work. Chain them (`A > B > C`), fan out (`A > B, C`), label with
-  `: text`, and add link props at the end: `A > B: text [dotted, accent, width: 4]`.
-- **Groups**: `Label [dashed] { ... }`, nested as deep as needed.
+  `: text`, and add link props at the end: `A > B: text [dotted, accent, width: 4]`. A link
+  from a node to itself, or an arrow with nothing on one side, is an error.
+- **Groups**: `Label [dashed] { ... }`, nested as deep as needed. Declaring a node inside a
+  group (its name on its own line, or with `[props]`) puts it there; a name first mentioned in a
+  link inside a group joins it unless it is declared elsewhere. A node sits in one group.
 - **Directives**: `title`, `subtitle`, `layout`, `direction` (`right` default, `down`, `left`,
-  `up`), `routing` (`straight`, `orthogonal`, `curved`), `theme`, `size` (`cover` or `1600x900`),
-  `textScale`, `nodeScale`, `spread`.
-- Quote values that hold commas or `#`; `\n` breaks a line. `#` and `//` start comments.
+  `up`), `routing` (`orthogonal` default, `straight`, `curved`), `theme`, `size` (`cover` or
+  `1600x900`), `textScale`, `nodeScale`, `spread`. An unknown directive is an error with a
+  suggestion (`layot: auto` → did you mean `layout`?), and so is Mermaid-style `A->B`.
+- Quote values that hold commas; `\n` breaks a line. `#` and `//` start a comment at the start
+  of a line or after a space, so `C#` and `https://` are safe. Every problem in a file is reported
+  at once, with its line number.
 
-Examples: [`examples/figures/`](./examples/figures) (a nested-group tailnet, a star lab, a
+Examples: [`examples/figures/`](./examples/figures) (a nested-group mesh network, a star lab, a
 dark pipeline of box nodes).
 
 ### Warnings and `--strict`
 
 After layout the engine checks its own work and prints a `warn` line for anything a reviewer
 would catch by eye: labels that overlap each other, a node, or a link; a group that covers a node
-it does not contain; text scaled below 70% to fit the frame. `--strict` turns any warning into a
-failure, for CI or for an agent that cannot look at the PNG.
+it does not contain; an empty group or a self-link in a JSON spec (neither is drawn); text scaled
+below 70% to fit the frame. `--strict` turns any warning into a failure and writes nothing, for
+CI or for an agent that cannot look at the PNG.
+
+Before warning about small text, `auto` layout tries to fix it: it wraps a long run into rows
+that still read left to right, tries top to bottom when no `direction` was set, and finally
+shrinks circles and gaps (never the text). A graph that is wide by nature (eight or more nodes in
+one chain of steps, plus groups) can still land under 70%: split it, or set a `size` and accept
+the warning.
 
 ### JSON specs
 
@@ -472,12 +490,12 @@ directly. Every key is validated: an unknown key or value fails with its path an
 | Top level | Default | Notes |
 |---|---|---|
 | `template` | (required) | `topology` / `diagram`, or a classic template below |
-| `layout` | `auto` (`star` if any node has `pos`, `free` if any has `at`) | `auto`, `star`, `ring`, `row`, `grid`, `free` |
+| `layout` | `auto` (`star` if any node has `pos`, `free` if any has `at`, `row` if the spec has no `links` key) | `auto`, `star`, `ring`, `row`, `grid`, `free` |
 | `size` | content-sized, 1600 wide (`star`/`ring`: `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og`, `github`, `square`) or `[w, h]`; content is scaled to fit and centered |
 | `theme` | `light` | `light` or `dark` |
 | `title`, `subtitle` | none | header in the cover style |
-| `direction`, `routing` | `right`, `straight` | `auto` layout only |
-| `textScale`, `nodeScale`, `spread` | `1` | text size, circle size, spacing multipliers |
+| `direction`, `routing` | `right`, `orthogonal` | `auto` layout only. With no `direction`, a figure too wide to read may wrap or turn to `down` |
+| `textScale`, `nodeScale`, `spread` | `1` | text size, circle size, spacing multipliers. In `topology` specs with a fixed layout (`star`, `ring`, `row`, `free`), a `nodeScale` under 0.5 is read the old way, as a fraction of the frame (0.16 was the default) |
 | `fit` | `true` | `false` keeps layout scale (still centered) |
 | `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` |
 
@@ -501,7 +519,7 @@ directly. Every key is validated: an unknown key or value fails with its path an
 | `label` | a chip on the line |
 | `fromLabel`, `toLabel` | small text past each arrowhead (an IP octet) |
 | `dir` | `to`, `from`, `both` (default), `none` |
-| `style` | `solid`, `dashed`, `dotted` |
+| `style` | `solid`, `dashed` (real dashes; the round-dot look of 0.7 and earlier is `dotted`), `dotted` |
 | `color`, `width` | `accent` draws an overlay/attack path with a bordered chip |
 | `curve` | bend as a fraction of length (fixed layouts); parallel links bend apart on their own |
 
@@ -516,6 +534,18 @@ Layouts: `auto` (ELK, the default), `star` (hub and spokes, straight by construc
 label takes the widest gap), `ring`, `row` (a chain; omitting `links` chains the nodes in
 order), `grid`, and `free` (explicit `at`). The fixed layouts place link chips and node labels
 by scoring candidate spots against every line, node and label.
+
+### Upgrading from 0.7
+
+- `TEMPLATES.topology` and `TEMPLATES.diagram` are the marker string `'graph'`, not a render
+  function: graph figures measure their text in the page, so render them with `renderFigure`.
+- `figureSize(spec)` returns `null` for a graph with no `size` and a non-radial layout, since its
+  canvas follows the drawing.
+- Specs are validated: unknown keys and values that used to be ignored now throw
+  `FigureSpecError`, and a link to a missing node is an error instead of being dropped.
+- A spec with links but no `layout` and no positions now gets `auto` layout (it used to be a
+  row). A spec with no `links` key still chains its nodes in a row.
+- `style: dashed` draws real dashes; use `dotted` for the old look.
 
 ### Classic templates
 
@@ -633,6 +663,13 @@ Main exports:
 - `normalizeGlyph(glyph)`
 - `renderCard(browser, options)`
 - `launchBrowser()`
+- `makeFigure(options)` / `readSpec(path)`: render a `.fig` or JSON spec file; `strict: true`
+  throws on warnings before anything is written
+- `renderFigure(browser, spec, options)`: one spec on a caller-owned browser, returning the PNG
+  buffer and its `warnings`
+- `parseFig(text)`: `.fig` text to a JSON spec; throws `FigureSpecError` (with `.errors`)
+- `figureSize(spec)`: the canvas for classic and radial specs; `null` for content-sized graphs
+- `palette(theme, tokens)` / `SIZES` / `TEMPLATES`
 
 ## Fonts and Glyph Extraction
 

@@ -47,7 +47,7 @@ npm i -D @playwright/test && npx playwright install chromium
   `generated/` output, used as a snapshot in tests.
 - `examples/figures/` — showcase `.fig` sources and their renders. Re-render
   after a visual change: `for f in examples/figures/*.fig; do node bin/cli.mjs
-  figure "$f"; done`.
+  figure "$f" --strict; done`. Keep them generic: no real hosts or services.
 - `test/` — `smoke.test.mjs` (browser-free), `browser.test.mjs` (snapshot),
   `figure.test.mjs` and `figure-graph.test.mjs` (DSL, validation, layout,
   placement, fit, render).

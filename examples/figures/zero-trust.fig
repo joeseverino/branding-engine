@@ -1,22 +1,22 @@
-# Nothing public: every hop rides the tailnet.
+# Nothing public: every hop rides the mesh VPN.
 title: Zero-trust private infrastructure
-subtitle: Tailscale
+subtitle: nothing public
 
-Mac [icon: laptop]
-iPhone [icon: phone]
+Laptop [icon: laptop]
+Phone [icon: phone]
 Internet [icon: globe, muted]
 
-Tailnet {
-  Home LAN [dashed] {
-    OptiPlex [icon: router, note: subnet router]
-    homelab-server [icon: server, note: Docker · AdGuard]
+Mesh VPN {
+  Home network [dashed] {
+    Router [icon: router, note: subnet router]
+    app-server [icon: server, note: containers · DNS]
   }
   Cloud [dashed] {
-    Edge VPS [icon: cloud, note: Caddy · Uptime Kuma]
+    Edge proxy [icon: cloud, note: TLS · status page]
   }
 }
 
-Mac > OptiPlex: WireGuard
-iPhone > Edge VPS: WireGuard
-OptiPlex > homelab-server
-Internet -- Edge VPS: dropped [muted]
+Laptop > Router: WireGuard
+Phone > Edge proxy: WireGuard
+Router > app-server
+Internet -- Edge proxy: dropped [muted]

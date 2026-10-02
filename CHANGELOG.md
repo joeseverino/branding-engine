@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+- Rebuild the `topology` figure (alias `diagram`) as a graph engine: a `.fig`
+  text format, ELK automatic layout with orthogonal routing, measured labels
+  kept off lines, nested groups, box nodes, a title header, dark-theme-aware
+  colors, and a fit that never clips. Long figures wrap into rows before text
+  is shrunk. Thirteen new glyphs.
+- Validate every figure spec, with suggestions, and report every `.fig`
+  problem at once with line numbers. Print warnings for overlaps, small text,
+  empty groups and self-links; `--strict` fails on any warning and writes
+  nothing.
+- Breaking: `TEMPLATES.topology` is no longer a render function, `figureSize`
+  returns `null` for content-sized graphs, unknown spec keys throw, a spec
+  with links but no layout gets `auto` layout, and `style: dashed` draws real
+  dashes (`dotted` keeps the old look). See "Upgrading from 0.7" in the README.
+
 ## 0.7.0 - 2026-08-09
 
 - Add `renderMarkSet`, the shared in-memory mark contract now used by both
