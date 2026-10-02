@@ -5,6 +5,10 @@ import { esc } from '../../html.mjs';
 import { pictogramGlyphSvg } from '../../pictogram.mjs';
 
 const ml = (s) => esc(s).replace(/\n/g, '<br>');
+// Authored lines short enough to read as one line stay on one line; only a long
+// line wraps at max-width. Stops a browser hyphen break like "private-/CA".
+const lines = (s) => String(s).split('\n')
+  .map((l) => (l.length <= 34 ? `<span style="white-space:nowrap">${esc(l)}</span>` : esc(l))).join('<br>');
 
 // Base metrics in logical px at textScale 1. Layout works in these units and
 // the fit step scales the whole drawing into the canvas.
@@ -23,8 +27,8 @@ export function colorOf(name, c, fallback) {
 export function nodeLabelHtml(node, c, ts, align = 'center') {
   const maxW = Math.round((node.labelW || METRICS.labelMaxW) * ts);
   return `<div style="max-width:${maxW}px;text-align:${align};line-height:1.18;color:${c.headline};` +
-    `font-weight:700;font-size:${30 * ts}px">${ml(node.label)}` +
-    (node.note ? `<div style="font-weight:500;font-size:${24 * ts}px;color:${c.subline};margin-top:${4 * ts}px">${ml(node.note)}</div>` : '') +
+    `font-weight:700;font-size:${30 * ts}px">${lines(node.label)}` +
+    (node.note ? `<div style="font-weight:500;font-size:${24 * ts}px;color:${c.subline};margin-top:${4 * ts}px">${lines(node.note)}</div>` : '') +
     '</div>';
 }
 

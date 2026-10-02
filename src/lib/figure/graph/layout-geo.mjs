@@ -63,11 +63,24 @@ function ring(G, d, hub) {
 }
 
 function row(G, d) {
+  // A short row reads as a banner: bigger circles, same text, like the old row frame.
+  const f = Math.min(1.4, Math.max(1, 4 / Math.max(G.nodes.length, 1)));
+  if (f > 1) {
+    d = Math.round(d * f);
+    for (const n of G.nodes) if (n.shape === 'circle') n.d = Math.round(n.d * f);
+  }
   // Each link's run between rims holds its chip with air on both sides, plus
   // room for endpoint labels past each arrowhead.
   const run = Math.max(0, ...G.links.map((l) => (l.chipSize?.w || 0)
     + 2 * Math.max(110, (Math.max(l.fromSize?.w || 0, l.toSize?.w || 0)) + 70)));
-  const gap = Math.max(3.4 * d, d + run, widest(G, (n) => n.labelSize?.w || nodeExtent(n).w) + 70) * G.opts.spread;
+  let gap = Math.max(3.4 * d, d + run, widest(G, (n) => n.labelSize?.w || nodeExtent(n).w) + 70) * G.opts.spread;
+  // Spread a sparse row across the frame at 1:1 instead of letting the fit
+  // step blow its text up: 1600 wide less the frame margins.
+  const k = G.nodes.length;
+  if (k > 1) {
+    const half = (n) => Math.max(nodeExtent(n).w, n.labelSize?.w || 0) / 2;
+    gap = Math.max(gap, (1448 - half(G.nodes[0]) - half(G.nodes[k - 1])) / (k - 1));
+  }
   G.nodes.forEach((n, i) => { n.x = i * gap; n.y = 0; });
 }
 
