@@ -1,0 +1,22 @@
+# Nothing public: every hop rides the tailnet.
+title: Zero-trust private infrastructure
+subtitle: Tailscale
+
+Mac [icon: laptop]
+iPhone [icon: phone]
+Internet [icon: globe, muted]
+
+Tailnet {
+  Home LAN [dashed] {
+    OptiPlex [icon: router, note: subnet router]
+    homelab-server [icon: server, note: Docker · AdGuard]
+  }
+  Cloud [dashed] {
+    Edge VPS [icon: cloud, note: Caddy · Uptime Kuma]
+  }
+}
+
+Mac > OptiPlex: WireGuard
+iPhone > Edge VPS: WireGuard
+OptiPlex > homelab-server
+Internet -- Edge VPS: dropped [muted]

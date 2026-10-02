@@ -7,7 +7,8 @@ import { METRICS } from './parts.mjs';
 
 const DIRS = { right: 'RIGHT', down: 'DOWN', left: 'LEFT', up: 'UP' };
 
-// Where the line through p→q enters a circle node, nearest to q.
+// Where a ray from p toward q first meets a circle node (plus `gap`): the rim
+// point that faces p.
 function circleEntry(n, p, q, gap) {
   const r = n.d / 2 + gap;
   const dx = q.x - p.x, dy = q.y - p.y;
@@ -15,7 +16,8 @@ function circleEntry(n, p, q, gap) {
   const a = dx * dx + dy * dy, b = 2 * (fx * dx + fy * dy), c = fx * fx + fy * fy - r * r;
   const disc = b * b - 4 * a * c;
   if (!a || disc < 0) return null;
-  const t = (-b + Math.sqrt(disc)) / (2 * a); // the exit on q's side
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  if (t < 0) return null; // p is inside the ring
   return { x: p.x + dx * t, y: p.y + dy * t };
 }
 
@@ -64,19 +66,24 @@ export async function layoutElk(G, groupPad) {
     containers.get(lca(l.from, l.to)).edges.push(e);
   }
 
+  // Spacing is per container in ELK: every group needs it, not just the root.
+  const spacing = {
+    'elk.spacing.nodeNode': String(Math.round(60 * G.opts.spread)),
+    'elk.layered.spacing.nodeNodeBetweenLayers': String(Math.round(110 * G.opts.spread)),
+    'elk.layered.spacing.edgeNodeBetweenLayers': '56',
+    'elk.spacing.edgeNode': '28',
+    'elk.spacing.edgeEdge': '22',
+    'elk.spacing.edgeLabel': '4',
+  };
+  for (const g of G.groups) Object.assign(containers.get(g.id).layoutOptions, spacing);
   const root = containers.get('root');
   root.layoutOptions = {
+    ...spacing,
     'elk.algorithm': 'layered',
     'elk.direction': DIRS[G.opts.direction] || 'RIGHT',
     'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
     'elk.edgeRouting': routing,
     'elk.randomSeed': '1',
-    'elk.spacing.nodeNode': String(Math.round(60 * G.opts.spread)),
-    'elk.layered.spacing.nodeNodeBetweenLayers': String(Math.round(150 * G.opts.spread)),
-    'elk.layered.spacing.edgeNodeBetweenLayers': '36',
-    'elk.spacing.edgeNode': '28',
-    'elk.spacing.edgeEdge': '22',
-    'elk.spacing.edgeLabel': '4',
     'elk.spacing.componentComponent': '120',
     'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
     'elk.layered.nodePlacement.bk.fixedAlignment': 'BALANCED',
@@ -126,19 +133,14 @@ export async function layoutElk(G, groupPad) {
     const o = abs.get(e.container || 'root') || { x: 0, y: 0 };
     const s = e.sections[0];
     const raw = [s.startPoint, ...(s.bendPoints || []), s.endPoint].map((p) => ({ x: p.x + o.x, y: p.y + o.y }));
-    const bends = raw.slice(1, -1);
-    if (routing === 'ORTHOGONAL') {
-      // Keep ELK's right angles; just pull each end onto the circle rim.
-      const pts = raw;
-      if (a.shape === 'circle') pts[0] = circleEntry(a, pts[1], pts[0], 9) || pts[0];
-      if (b.shape === 'circle') pts[pts.length - 1] = circleEntry(b, pts[pts.length - 2], pts[pts.length - 1], 9) || pts[pts.length - 1];
-      l.pts = pts;
-    } else {
-      // Fan straight out of the node toward its first bend: circles have no sides.
-      const first = bends[0] || b, last = bends[bends.length - 1] || a;
-      l.pts = [rimPoint(a, first), ...bends, rimPoint(b, last)];
-      l.smooth = G.opts.routing === 'curved';
-    }
+    // ELK's ports sit on the node's side, clear of its outside label; keep its
+    // first and last segments and pull each end onto the circle rim.
+    const pts = raw;
+    const n = pts.length;
+    if (a.shape === 'circle') pts[0] = circleEntry(a, pts[1], pts[0], 9) || rimPoint(a, pts[1]);
+    if (b.shape === 'circle') pts[n - 1] = circleEntry(b, pts[n - 2], pts[n - 1], 9) || rimPoint(b, pts[n - 2]);
+    l.pts = pts;
+    l.smooth = routing === 'POLYLINE' && G.opts.routing === 'curved';
     l.rounded = true;
     if (e.labels?.length && l.chipSize) {
       const lb = e.labels[0];
