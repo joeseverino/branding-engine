@@ -56,8 +56,8 @@ test('fig: directives, inline declarations and nested groups', () => {
   assert.deepEqual(s.size, [1600, 900]);
   assert.equal(s.direction, 'down');
   assert.deepEqual(s.groups, [
-    { id: 'g1', label: 'Outer', style: 'dashed', nodes: ['a'] },
-    { id: 'g2', label: 'Inner', nodes: ['b'], parent: 'g1' },
+    { id: '#g1', label: 'Outer', style: 'dashed', nodes: ['a'] },
+    { id: '#g2', label: 'Inner', nodes: ['b'], parent: '#g1' },
   ]);
   assert.equal(s.nodes.find((n) => n.id === 'Mac').icon, 'laptop');
 });
@@ -82,7 +82,7 @@ test('validation suggests the key or value that was meant', () => {
 
 test('normalize cross-checks ids and folds legacy keys', () => {
   assert.throws(() => normalize({ template: 'topology', nodes: [{ id: 'web' }], links: [{ from: 'web', to: 'wbe' }] }),
-    /no node "wbe" \(did you mean "web"\?\)/);
+    /no node or group "wbe" \(did you mean "web"\?\)/);
   assert.throws(() => normalize({ template: 'topology', nodes: [{ id: 'a' }, { id: 'a' }] }), /duplicate id/);
   assert.throws(() => normalize({ template: 'topology', nodes: [{ id: 'a' }], groups: [{ label: 'G', nodes: ['b'] }] }), /no node "b"/);
   const G = normalize({
@@ -342,4 +342,108 @@ test('renders: wrapped chains read at full size, dark anchors stay visible, --st
     await assert.rejects(() => makeFigure({ spec: clash, out, browser, quiet: true, strict: true }), /nothing written/);
     await assert.rejects(() => stat(out), /ENOENT/);
   } finally { await browser.close(); }
+});
+
+// --- links to groups ------------------------------------------------------------
+
+const SERVERS = [
+  'Mac [icon: laptop]',
+  'Vault [icon: key, anchor]',
+  'Mac <> Vault: sign',
+  'Mac <> Servers: user cert · host cert',
+  'Servers [dashed] {',
+  '  web [icon: server]',
+  '  vps [icon: cloud]',
+  '}',
+].join('\n');
+
+test('fig: a link may name a group, even one declared below it', () => {
+  const s = parseFig(SERVERS);
+  assert.deepEqual(s.nodes.map((n) => n.id), ['Mac', 'Vault', 'web', 'vps']);
+  const g = s.groups[0];
+  assert.equal(g.label, 'Servers');
+  assert.deepEqual(s.links[1], { from: 'Mac', to: g.id, dir: 'both', label: 'user cert · host cert' });
+});
+
+test('fig: a group link fails clearly when the name is ambiguous', () => {
+  assert.throws(() => parseFig('A > G\nG {\n  x\n}\nG {\n  y\n}'), /2 groups are labelled "G"/);
+  assert.throws(() => parseFig('G\nA > G\nG {\n  x\n}'), /"G" is both a group and a node/);
+});
+
+test('normalize: group ends are checked like node ends', () => {
+  const base = { template: 'topology', nodes: [{ id: 'a' }, { id: 'b' }], groups: [{ id: 'G', label: 'G', nodes: ['b'] }] };
+  const ok = normalize({ ...base, links: [{ from: 'a', to: 'G' }] });
+  assert.equal(ok.links[0].toGroup, true);
+  assert.equal(ok.links[0].fromGroup, false);
+  assert.throws(() => normalize({ ...base, links: [{ from: 'b', to: 'G' }] }), /"b" sits inside group "G"/);
+  assert.throws(() => normalize({ ...base, links: [{ from: 'a', to: 'Gx' }] }), /no node or group "Gx" \(did you mean "G"\?\)/);
+  const rev = normalize({ ...base, links: [{ from: 'a', to: 'G', dir: 'from' }] });
+  assert.deepEqual([rev.links[0].from, rev.links[0].fromGroup, rev.links[0].to, rev.links[0].toGroup], ['G', true, 'a', false]);
+});
+
+const bareMeasure = (G) => {
+  for (const n of G.nodes) { n.d = 150; n.labelSize = { w: 120, h: 40 }; }
+  for (const l of G.links) if (l.label) l.chipSize = { w: 200, h: 44 };
+};
+
+test('ELK: a link to a group stops just outside its border, square to it', async () => {
+  const G = normalize(parseFig(SERVERS));
+  bareMeasure(G);
+  await layoutElk(G, { top: 90, side: 34 });
+  const r = G.groupById.get(G.links[1].to).rect;
+  const pts = G.links[1].pts;
+  const end = pts[pts.length - 1], prev = pts[pts.length - 2];
+  assert.ok(Math.abs(end.x - (r.x - 9)) < 1, `ends 9px left of the border (${end.x} vs ${r.x - 9})`);
+  assert.ok(end.y > r.y && end.y < r.y + r.h, 'meets the border along its side');
+  assert.ok(Math.abs(prev.y - end.y) < 0.5, 'last segment is horizontal');
+  for (const n of G.nodes.filter((x) => x.group)) {
+    assert.ok(!pathHitsRect(pts, nodeRect(n)), `does not run into member ${n.id}`);
+  }
+});
+
+test('fixed layouts: a link to a group ends at its border and labels clear it', async () => {
+  const spec = { ...parseFig(SERVERS), layout: 'grid' };
+  spec.nodes.find((n) => n.id === 'Mac').at = [0, 1];
+  spec.nodes.find((n) => n.id === 'Vault').at = [0, 0];
+  spec.nodes.find((n) => n.id === 'web').at = [2, 0];
+  spec.nodes.find((n) => n.id === 'vps').at = [2, 1];
+  const browser = await launchBrowser().catch(() => null);
+  if (!browser) return;
+  try {
+    const { warnings, buffer } = await makeFigure({ spec, browser });
+    assert.ok(buffer.length > 1000);
+    assert.deepEqual(warnings, []);
+  } finally { await browser.close(); }
+});
+
+test('group labels slide clear of a link crossing their top band', async () => {
+  const { placeGroupLabels } = await import('../src/lib/figure/graph/place.mjs');
+  const G = {
+    groups: [{ id: 'G', label: 'Homelab', rect: rect(0, 0, 600, 400) }],
+    links: [{ pts: [{ x: 60, y: -100 }, { x: 60, y: 200 }] }],
+  };
+  placeGroupLabels(G, new Map([['G', { w: 120, h: 20 }]]), 1);
+  const lr = G.groups[0].labelRect;
+  assert.equal(G.groups[0].labelBadge, false);
+  assert.ok(!pathHitsRect(G.links[0].pts, lr), 'label clears the line');
+  assert.ok(lr.x > 60 && lr.x < 120, `moved just past the line (x=${lr.x})`);
+  G.links.push({ pts: [{ x: -50, y: 30 }, { x: 650, y: 30 }] }); // a line along the whole band
+  placeGroupLabels(G, new Map([['G', { w: 120, h: 20 }]]), 1);
+  assert.equal(G.groups[0].labelBadge, true, 'no clear spot: badge it');
+});
+
+test('ELK: runs of two links that nearly meet on one track are nudged apart', async () => {
+  const { separateTouchingRuns } = await import('../src/lib/figure/graph/layout-elk.mjs');
+  const a = { from: 'p', to: 'q', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 200 }, { x: 300, y: 200 }] };
+  const b = { from: 'r', to: 's', pts: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 220 }, { x: 300, y: 220 }] };
+  const far = { from: 't', to: 'u', pts: [{ x: 0, y: 900 }, { x: 100, y: 900 }, { x: 100, y: 700 }, { x: 300, y: 700 }] };
+  separateTouchingRuns([a, b, far]);
+  assert.equal(a.pts[1].x, 100, 'the first link keeps its track');
+  assert.notEqual(b.pts[1].x, 100, 'the second moves off it');
+  assert.equal(b.pts[1].x, b.pts[2].x, 'and stays vertical');
+  assert.equal(far.pts[1].x, 100, 'runs far apart are left alone');
+  const fan1 = { from: 'hub', to: 'x', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -200 }, { x: 300, y: -200 }] };
+  const fan2 = { from: 'hub', to: 'y', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 200 }, { x: 300, y: 200 }] };
+  separateTouchingRuns([fan1, fan2]);
+  assert.equal(fan2.pts[1].x, 100, 'a fan-out keeps its shared trunk');
 });

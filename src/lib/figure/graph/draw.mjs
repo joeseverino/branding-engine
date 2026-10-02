@@ -72,9 +72,10 @@ export function drawGraph(G, c, frame, sizes) {
     if (!g.rect) continue;
     const border = `2px ${g.style === 'dashed' ? 'dashed' : 'solid'} ${g.color ? colorOf(g.color, c) : c.groupBorder}`;
     out.push(`<div style="${at(g.rect)};border-radius:${30 * ts}px;background:${c.groupFill};border:${border}"></div>`);
-    if (g.label) {
-      const { w, h } = sizes.group.get(g.id);
-      out.push(`<div style="${at({ x: g.rect.x + 30 * ts, y: g.rect.y + 26 * ts, w, h })}">${groupLabelHtml(g, c, ts)}</div>`);
+    if (g.labelRect) {
+      const badge = g.labelBadge
+        ? `;background:${c.chipBg};border-radius:${7 * ts}px;box-shadow:${c.nodeShadow};outline:${7 * ts}px solid ${c.chipBg}` : '';
+      out.push(`<div style="${at(g.labelRect)}${badge}">${groupLabelHtml(g, c, ts)}</div>`);
     }
   }
   // Quiet links (muted, dashed, dotted) paint first, so a solid link that

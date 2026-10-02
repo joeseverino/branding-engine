@@ -19,4 +19,4 @@ Mesh VPN {
 Laptop > Router: WireGuard
 Phone > Edge proxy: WireGuard
 Router > app-server
-Internet -- Edge proxy: dropped [muted]
+Internet -- "Mesh VPN": dropped [muted]

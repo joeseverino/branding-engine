@@ -456,6 +456,10 @@ app-server > Identity provider, Container UI: inject
 - **Groups**: `Label [dashed] { ... }`, nested as deep as needed. Declaring a node inside a
   group (its name on its own line, or with `[props]`) puts it there; a name first mentioned in a
   link inside a group joins it unless it is declared elsewhere. A node sits in one group.
+- **Links to groups**: use a group's label as a link end (`Mac <> Servers: user cert`) and the
+  line stops at the group's border, so one link and one label stand for every member. The group
+  can be declared above or below the link. Two groups with the same label, a node and a group with
+  the same name, or a link between a group and something inside it are errors.
 - **Directives**: `title`, `subtitle`, `layout`, `direction` (`right` default, `down`, `left`,
   `up`), `routing` (`orthogonal` default, `straight`, `curved`), `theme`, `size` (`cover` or
   `1600x900`), `textScale`, `nodeScale`, `spread`. An unknown directive is an error with a
@@ -470,7 +474,8 @@ dark pipeline of box nodes).
 ### Warnings and `--strict`
 
 After layout the engine checks its own work and prints a `warn` line for anything a reviewer
-would catch by eye: labels that overlap each other, a node, or a link; a group that covers a node
+would catch by eye: labels that overlap each other, a node, or a link (a group's label first slides
+along its top edge to clear any line); a group that covers a node
 it does not contain; an empty group or a self-link in a JSON spec (neither is drawn); text scaled
 below 70% to fit the frame. `--strict` turns any warning into a failure and writes nothing, for
 CI or for an agent that cannot look at the PNG.
@@ -515,7 +520,7 @@ directly. Every key is validated: an unknown key or value fails with its path an
 
 | Link key | Notes |
 |---|---|
-| `from`, `to` | node ids (checked, with suggestions) |
+| `from`, `to` | node or group ids (checked, with suggestions); a group end stops at its border |
 | `label` | a chip on the line |
 | `fromLabel`, `toLabel` | small text past each arrowhead (an IP octet) |
 | `dir` | `to`, `from`, `both` (default), `none` |

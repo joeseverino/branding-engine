@@ -3,6 +3,23 @@
 import { bend, rimPoint } from '../geom.mjs';
 import { resolveSize } from '../palette.mjs';
 
+// A group end stands in as a box at the group's rect.
+export function groupEnd(G, id) {
+  const r = G.groupById.get(id).rect;
+  return { shape: 'box', x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h };
+}
+
+// Links that end at a group, once group rects exist: a straight line between
+// the two ends, stopping at the node's rim and just outside the group's border.
+export function routeGroupLinks(G) {
+  for (const l of G.links) {
+    if (!l.fromGroup && !l.toGroup) continue;
+    const a = l.fromGroup ? groupEnd(G, l.from) : G.byId.get(l.from);
+    const b = l.toGroup ? groupEnd(G, l.to) : G.byId.get(l.to);
+    l.pts = [rimPoint(a, b), rimPoint(b, a)];
+  }
+}
+
 const SPOKES = ['w', 'e', 's', 'n', 'nw', 'ne', 'sw', 'se'];
 
 export const nodeExtent = (n) => (n.shape === 'box' ? { w: n.w, h: n.h } : { w: n.d, h: n.d });
@@ -140,6 +157,8 @@ export function routeGeo(G) {
     });
   }
   for (const l of G.links) {
+    // A link to a group waits for the group's border: routeGroupLinks.
+    if (l.fromGroup || l.toGroup) { l.pts = []; continue; }
     const a = G.byId.get(l.from), b = G.byId.get(l.to);
     if (a === b) { l.pts = []; continue; }
     if (l.curve) {

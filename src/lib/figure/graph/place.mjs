@@ -10,10 +10,11 @@ export const nodeRect = (n) => (n.shape === 'box'
 
 const T_STEPS = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74];
 
-export function placeChips(G) {
-  const placed = [];
+export function placeChips(G, { only } = {}) {
+  const placed = G.links.filter((l) => l.chipRect && !(only && only(l))).map((l) => l.chipRect);
   const nodeRects = G.nodes.map((n) => inflate(nodeRect(n), 10));
   for (const l of G.links) {
+    if (only && !only(l)) continue;
     if (!l.label || !l.chipSize || l.pts.length < 2) continue;
     let best;
     for (const t of T_STEPS) {
@@ -80,6 +81,7 @@ export function placeLabels(G) {
       placed.push(n.labelRect);
       continue;
     }
+    n.labelBadge = false;
     const angles = linkAngles(G, n);
     const options = n.labelPos ? CANDIDATES.filter(([name]) => name === n.labelPos) : CANDIDATES;
     let best;
@@ -135,5 +137,36 @@ export function placeEndLabels(G) {
       const cx = p.x + nx * off, cy = p.y + ny * off;
       l.endRects.push({ text, r: rect(cx - size.w / 2, cy - size.h / 2, size.w, size.h) });
     }
+  }
+}
+
+// A group's label sits in the band along its top edge, as far left as it can
+// without a link crossing it. With no clear spot it stays at the left and gets
+// a chip background, the same treatment as a crowded node label.
+export function placeGroupLabels(G, sizes, ts) {
+  const inset = 30 * ts, top = 26 * ts, pad = 14;
+  const paths = G.links.filter((l) => l.pts.length > 1);
+  for (const g of G.groups) {
+    g.labelRect = undefined;
+    g.labelBadge = false;
+    if (!g.rect || !g.label || !sizes.has(g.id)) continue;
+    const { w, h } = sizes.get(g.id);
+    const x0 = g.rect.x + inset, x1 = g.rect.x + g.rect.w - inset - w;
+    const y = g.rect.y + top;
+    const at = (x) => rect(x, y, w, h);
+    const clear = (x) => !paths.some((l) => pathHitsRect(l.pts, inflate(at(x), pad, 6)));
+    // Candidate lefts: the inset, and just past each place a link crosses the band.
+    const band = rect(x0, y - 6, Math.max(x1 - x0, 0) + w, h + 12);
+    const xs = [x0];
+    for (const l of paths) {
+      for (let i = 1; i < l.pts.length; i++) {
+        const p = l.pts[i - 1], q = l.pts[i];
+        if (!pathHitsRect([p, q], band)) continue;
+        xs.push(Math.max(p.x, q.x) + pad + 2);
+      }
+    }
+    const x = xs.filter((v) => v <= x1 + 0.5).sort((a, b) => a - b).find(clear);
+    if (x !== undefined) g.labelRect = at(x);
+    else { g.labelRect = at(x0); g.labelBadge = true; }
   }
 }

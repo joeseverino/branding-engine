@@ -29,6 +29,50 @@ function rimAlong(n, next, gap) {
     : { x: n.x, y: n.y + Math.sign(dy) * (half + gap) };
 }
 
+// Two links whose straight runs share a track and nearly meet end to end read
+// as one line. ELK only spaces runs that overlap, so nudge the later link's
+// inner run sideways. Runs touching an end (the port segments) stay put, and
+// so do fan-outs, which share a trunk by design.
+export function separateTouchingRuns(links, { gap = 40, shift = 18 } = {}) {
+  const runs = [];
+  links.forEach((l, li) => {
+    for (let i = 1; i < l.pts.length - 2; i++) {
+      const a = l.pts[i], b = l.pts[i + 1];
+      const vertical = Math.abs(a.x - b.x) < 0.5, horizontal = Math.abs(a.y - b.y) < 0.5;
+      if (vertical || horizontal) runs.push({ li, i, vertical, at: vertical ? a.x : a.y, lo: Math.min(vertical ? a.y : a.x, vertical ? b.y : b.x), hi: Math.max(vertical ? a.y : a.x, vertical ? b.y : b.x) });
+    }
+  });
+  const moved = new Set();
+  for (const r of runs) {
+    for (const o of runs) {
+      if (o.li <= r.li || o.vertical !== r.vertical || moved.has(`${o.li}:${o.i}`)) continue;
+      // Links that leave or reach the same node share a trunk on purpose.
+      const A = links[r.li], B = links[o.li];
+      if (A.from === B.from || A.to === B.to) continue;
+      if (Math.abs(o.at - r.at) > 4) continue;
+      const apart = Math.max(o.lo - r.hi, r.lo - o.hi);
+      if (apart < 0 || apart > gap) continue; // overlapping runs are ELK's to space
+      const l = links[o.li];
+      const k = o.vertical ? 'x' : 'y';
+      // Move away from the other run's far end so the two don't look joined.
+      const dir = l.pts[o.i][k] >= r.at ? 1 : -1;
+      l.pts[o.i] = { ...l.pts[o.i], [k]: l.pts[o.i][k] + dir * shift };
+      l.pts[o.i + 1] = { ...l.pts[o.i + 1], [k]: l.pts[o.i + 1][k] + dir * shift };
+      moved.add(`${o.li}:${o.i}`);
+    }
+  }
+}
+
+// An end on a group's border: on the segment's axis through `p` (the port),
+// `gap` outside the side it meets, facing `next`.
+function borderAlong(r, p, next, gap) {
+  const dx = next.x - p.x, dy = next.y - p.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: dx < 0 ? r.x - gap : r.x + r.w + gap, y: p.y };
+  }
+  return { x: p.x, y: dy < 0 ? r.y - gap : r.y + r.h + gap };
+}
+
 // Where a ray from p toward q first meets a circle node (plus `gap`): the rim
 // point that faces p.
 function circleEntry(n, p, q, gap) {
@@ -77,6 +121,17 @@ export async function layoutElk(G, groupPad, direction = G.opts.direction, { wra
       layoutOptions: { 'elk.padding': `[top=${groupPad.top},left=${groupPad.side},bottom=${groupPad.side},right=${groupPad.side}]` },
     });
     parentOf.set(g.id, g.parent || 'root');
+  }
+  // A group that a link ends at gets ports on its in and out sides; ELK places
+  // them along the side and routes the link to the border.
+  const linkedGroups = new Set(G.links.flatMap((l) => [l.fromGroup && l.from, l.toGroup && l.to].filter(Boolean)));
+  for (const g of G.groups) {
+    if (!linkedGroups.has(g.id)) continue;
+    const box = containers.get(g.id);
+    if (ported) {
+      box.ports = [inSide, outSide].map((side, i) => ({ id: `${g.id}\u241F${i ? 'out' : 'in'}`, width: 1, height: 1, layoutOptions: { 'elk.port.side': side } }));
+      box.layoutOptions['elk.portConstraints'] = 'FIXED_SIDE';
+    }
   }
   for (const g of G.groups) containers.get(parentOf.get(g.id)).children.push(containers.get(g.id));
   for (const n of G.nodes) {
@@ -166,8 +221,14 @@ export async function layoutElk(G, groupPad, direction = G.opts.direction, { wra
   collect(out);
   const elkEdge = new Map(edgesOut.map((e) => [e.id, e]));
 
+  // A group end stands in as a box node at the group's rect.
+  const endOf = (id, isGroup) => {
+    if (!isGroup) return G.byId.get(id);
+    const r = G.groupById.get(id).rect;
+    return { shape: 'box', isGroup: true, rect: r, x: r.x + r.w / 2, y: r.y + r.h / 2, w: r.w, h: r.h };
+  };
   for (const l of G.links) {
-    const a = G.byId.get(l.from), b = G.byId.get(l.to);
+    const a = endOf(l.from, l.fromGroup), b = endOf(l.to, l.toGroup);
     const e = elkEdge.get(l.id);
     if (!e || !e.sections?.length) { l.pts = []; continue; }
     const o = abs.get(e.container || 'root') || { x: 0, y: 0 };
@@ -177,8 +238,10 @@ export async function layoutElk(G, groupPad, direction = G.opts.direction, { wra
     const n = pts.length;
     if (ported) {
       // Ports sit on the rim at a side's midpoint: pull each end back off it.
-      pts[0] = rimAlong(a, pts[1], 9);
-      pts[n - 1] = rimAlong(b, pts[n - 2], 9);
+      // A group's port sits anywhere along its side: keep the line where ELK
+      // put it and stop just short of the border.
+      pts[0] = a.isGroup ? borderAlong(a.rect, pts[0], pts[1], 9) : rimAlong(a, pts[1], 9);
+      pts[n - 1] = b.isGroup ? borderAlong(b.rect, pts[n - 1], pts[n - 2], 9) : rimAlong(b, pts[n - 2], 9);
     } else {
       // Free ports land on the bounding square; re-aim each end at the rim.
       if (a.shape === 'circle') pts[0] = circleEntry(a, pts[1], pts[0], 9) || rimPoint(a, pts[1]);
@@ -194,4 +257,5 @@ export async function layoutElk(G, groupPad, direction = G.opts.direction, { wra
       l.chipRect = rect(lb.x + o.x, lb.y + o.y, l.chipSize.w, l.chipSize.h);
     }
   }
+  if (ported) separateTouchingRuns(G.links.filter((l) => l.pts.length > 3));
 }

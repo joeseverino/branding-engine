@@ -183,6 +183,9 @@ function peel(s) {
   return open >= 0 ? [t.slice(0, open).trim(), t.slice(open + 1, -1)] : [t, null];
 }
 
+// Group ids carry a character an unquoted name can't start with.
+const groupId = (n) => `#g${n}`;
+
 const MERMAID = /(<-+>|-+>|<-+|<>|=>)|^[<>]|[<>]$/;
 
 export function parseFig(text) {
@@ -246,6 +249,20 @@ export function parseFig(text) {
     return n;
   };
 
+  // Group labels, in file order, so a link can name a group declared below it.
+  const groupsByLabel = new Map();
+  {
+    let seq = 0;
+    for (const raw of text.split(/\r?\n/)) {
+      const t = stripComment(raw).trim();
+      if (!t.endsWith('{') || /^([A-Za-z][A-Za-z0-9]*)\s*:/.test(t)) continue;
+      const label = unquote(peel(t.slice(0, -1))[0]);
+      if (!groupsByLabel.has(label)) groupsByLabel.set(label, []);
+      groupsByLabel.get(label).push(groupId(++seq));
+    }
+  }
+  const groupEnds = new Map(); // label → first line it was used as a link end
+
   text.split(/\r?\n/).forEach((rawLine, idx) => {
     const where = `line ${idx + 1}`;
     const line = stripComment(rawLine).trim();
@@ -275,7 +292,7 @@ export function parseFig(text) {
       const [name, body] = peel(line.slice(0, -1));
       const props = body ? parseProps(body, 'group', where, errors) : {};
       checkObject(props, GROUP_PROPS, `${where}: group "${unquote(name)}"`, errors);
-      const g = { id: `g${++groupSeq}`, label: unquote(name), ...props, nodes: [] };
+      const g = { id: groupId(++groupSeq), label: unquote(name), ...props, nodes: [] };
       if (stack.length) g.parent = stack[stack.length - 1].id;
       spec.groups.push(g);
       stack.push(g);
@@ -324,14 +341,23 @@ export function parseFig(text) {
       const op = ops.ops[i];
       const froms = splitTop(ops.parts[i], ',').map((s) => s.trim()).filter(Boolean);
       const tos = splitTop(ops.parts[i + 1], ',').map((s) => s.trim()).filter(Boolean);
+      // A bare name that matches a group's label is that group: the link ends
+      // at its border.
       const ends = (list) => list.map((frag) => {
-        const [, body] = peel(frag);
+        const [nm, body] = peel(frag);
+        const name = unquote(nm);
+        const ids = body === null ? groupsByLabel.get(name) : undefined;
+        if (ids) {
+          if (ids.length > 1) { errors.push(`${where}: ${ids.length} groups are labelled "${name}"; give them different labels to link to one`); return null; }
+          if (!groupEnds.has(name)) groupEnds.set(name, where);
+          return { id: ids[0], label: name, group: true };
+        }
         return node(frag, where, { declare: body !== null });
       });
       const A = ends(froms), B = ends(tos);
       for (const a of A) for (const b of B) {
         if (!a || !b) continue;
-        if (a === b) { errors.push(`${where}: "${a.id}" links to itself, which can't be drawn`); continue; }
+        if (a.id === b.id) { errors.push(`${where}: "${a.label || a.id}" links to itself, which can't be drawn`); continue; }
         const lk = { from: a.id, to: b.id, dir: op[1] };
         if (op[2]) lk.style = op[2];
         if (label && i === ops.ops.length - 1) lk.label = unquote(label);
@@ -342,6 +368,9 @@ export function parseFig(text) {
     }
   }
 
+  for (const [label, where] of groupEnds) {
+    if (nodes.has(label)) errors.push(`${where}: "${label}" is both a group and a node; rename one so the link knows which it means`);
+  }
   if (stack.length) errors.push(`end of file: ${stack.length} group(s) left open ("${stack.map((g) => g.label).join('", "')}")`);
   if (!spec.nodes.length && !errors.length) errors.push('the file declares no nodes');
   if (errors.length) throw new FigureSpecError(errors);

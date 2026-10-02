@@ -3,10 +3,10 @@
 // sizes, so layout always works from real text metrics.
 import { resolveSize } from '../palette.mjs';
 import { layoutElk } from './layout-elk.mjs';
-import { layoutGeo } from './layout-geo.mjs';
+import { layoutGeo, routeGroupLinks } from './layout-geo.mjs';
 import { isRadial, normalize } from './normalize.mjs';
 import { boxInnerHtml, chipHtml, endLabelHtml, groupLabelHtml, nodeLabelHtml, titleHtml } from './parts.mjs';
-import { placeChips, placeEndLabels, placeLabels } from './place.mjs';
+import { placeChips, placeEndLabels, placeGroupLabels, placeLabels } from './place.mjs';
 import { collectWarnings, contentBounds, fitFrame, groupRectsGeo } from './frame.mjs';
 import { drawGraph } from './draw.mjs';
 
@@ -99,9 +99,23 @@ export async function renderGraph(spec, c, measure) {
     placeChips(G);
     placeLabels(G);
     groupRectsGeo(G, groupPad);
+    if (G.links.some((l) => l.fromGroup || l.toGroup)) {
+      // Lines to groups need the group borders, and the labels need to know
+      // about those lines: route, re-place the labels, settle the borders.
+      const toGroup = (l) => l.fromGroup || l.toGroup;
+      for (let pass = 0; pass < 2; pass++) {
+        routeGroupLinks(G);
+        placeChips(G, { only: toGroup });
+        placeLabels(G);
+        groupRectsGeo(G, groupPad);
+      }
+      routeGroupLinks(G);
+      placeChips(G, { only: toGroup });
+    }
     placeEndLabels(G);
   }
 
+  placeGroupLabels(G, groupSizes, ts);
   const frame = frameFor();
   const warnings = collectWarnings(G, frame.s);
   const html = drawGraph(G, c, frame, { group: groupSizes });

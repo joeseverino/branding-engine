@@ -83,6 +83,11 @@ export function collectWarnings(G, s) {
     }
   }
   for (const g of G.groups) {
+    if (!g.labelRect || g.labelBadge) continue;
+    const probe = inflate(g.labelRect, -1);
+    for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) warn.push(`group label "${g.label}" crosses link ${lname(l)}`);
+  }
+  for (const g of G.groups) {
     if (!g.rect) continue;
     const inside = (n) => { for (let p = n.group; p; p = G.groups.find((x) => x.id === p)?.parent) if (p === g.id) return true; return false; };
     for (const n of G.nodes) if (!inside(n) && overlapArea(inflate(g.rect, -2), nodeRect(n)) > 4) warn.push(`group "${g.label}" covers node ${name(n)}, which is not in it`);

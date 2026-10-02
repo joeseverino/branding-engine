@@ -68,23 +68,6 @@ export function normalize(spec) {
 
   const layout = graphLayout(spec);
 
-  let rawLinks = spec.links;
-  if (!rawLinks && layout === 'row') rawLinks = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id, dir: 'to' }));
-  const links = [];
-  (rawLinks || []).forEach((l, i) => {
-    const where = `links[${i}]${l && l.from ? ` (${l.from} → ${l.to})` : ''}`;
-    checkObject(l, LINK, where, errors);
-    if (!l || typeof l !== 'object') return;
-    if (typeof l.from !== 'string' || typeof l.to !== 'string') { errors.push(`${where}: needs "from" and "to"`); return; }
-    if (!known(l.from, `${where}.from`) | !known(l.to, `${where}.to`)) return;
-    if (l.from === l.to) { notes.push(`link ${l.from} → ${l.to} joins a node to itself and is not drawn`); return; }
-    let link = { id: `e${i}`, index: i, from: l.from, to: l.to, label: l.label, fromLabel: l.fromLabel, toLabel: l.toLabel,
-      dir: l.dir || 'both', style: l.style || 'solid', color: l.color, width: l.width, curve: l.curve };
-    // `from` arrows point back at the source; store every link as source → target.
-    if (link.dir === 'from') link = { ...link, from: link.to, to: link.from, dir: 'to', fromLabel: link.toLabel, toLabel: link.fromLabel };
-    links.push(link);
-  });
-
   const groups = [];
   const groupIds = new Set();
   (spec.groups || []).forEach((g, i) => {
@@ -130,11 +113,60 @@ export function normalize(spec) {
     }
   }
 
+  function hasContent(g) { return g.nodes.length > 0 || groups.some((k) => k.parent === g.id && hasContent(k)); }
+  // A link end is a node or a group (its border). A name that is both is
+  // ambiguous; a link between a group and something inside it has no border to
+  // cross.
+  const groupKnown = (id) => groupById.has(id);
+  const endpoint = (id, where) => {
+    if (byId.has(id) && groupKnown(id)) { errors.push(`${where}: "${id}" names both a node and a group; rename one`); return false; }
+    if (groupKnown(id)) {
+      if (!hasContent(groupById.get(id))) { errors.push(`${where}: group "${groupById.get(id).label || id}" has no nodes to link to`); return false; }
+      return true;
+    }
+    if (byId.has(id)) return true;
+    const hint = suggest(id, [...ids, ...groupById.keys()]);
+    errors.push(`${where}: no node or group "${id}"${hint ? ` (did you mean "${hint}"?)` : ''}`);
+    return false;
+  };
+  const ancestors = (id) => {
+    const out = [];
+    let p = byId.has(id) ? byId.get(id).group : groupById.get(id)?.parent;
+    for (const seen = new Set(); p && !seen.has(p); p = groupById.get(p)?.parent) { seen.add(p); out.push(p); }
+    return out;
+  };
+  const nestingOk = (a, b, where) => {
+    const label = (id) => (groupKnown(id) ? `group "${groupById.get(id).label || id}"` : `"${id}"`);
+    if (ancestors(a).includes(b) || ancestors(b).includes(a)) {
+      const [inner, outer] = ancestors(a).includes(b) ? [a, b] : [b, a];
+      errors.push(`${where}: ${label(inner)} sits inside ${label(outer)}, so a link between them has no border to cross`);
+      return false;
+    }
+    return true;
+  };
+
+  let rawLinks = spec.links;
+  if (!rawLinks && layout === 'row') rawLinks = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id, dir: 'to' }));
+  const links = [];
+  (rawLinks || []).forEach((l, i) => {
+    const where = `links[${i}]${l && l.from ? ` (${l.from} → ${l.to})` : ''}`;
+    checkObject(l, LINK, where, errors);
+    if (!l || typeof l !== 'object') return;
+    if (typeof l.from !== 'string' || typeof l.to !== 'string') { errors.push(`${where}: needs "from" and "to"`); return; }
+    if (!endpoint(l.from, `${where}.from`) | !endpoint(l.to, `${where}.to`)) return;
+    if (l.from === l.to) { notes.push(`link ${l.from} → ${l.to} joins a node to itself and is not drawn`); return; }
+    if (!nestingOk(l.from, l.to, where)) return;
+    let link = { id: `e${i}`, index: i, from: l.from, to: l.to, fromGroup: groupKnown(l.from), toGroup: groupKnown(l.to), label: l.label, fromLabel: l.fromLabel, toLabel: l.toLabel,
+      dir: l.dir || 'both', style: l.style || 'solid', color: l.color, width: l.width, curve: l.curve };
+    // `from` arrows point back at the source; store every link as source → target.
+    if (link.dir === 'from') link = { ...link, from: link.to, to: link.from, fromGroup: link.toGroup, toGroup: link.fromGroup, dir: 'to', fromLabel: link.toLabel, toLabel: link.fromLabel };
+    links.push(link);
+  });
+
   if (errors.length) throw new FigureSpecError(errors);
   for (const n of nodes) delete n.groupAssigned;
 
   // A group with nothing in it (directly or through its children) isn't drawn.
-  const hasContent = (g) => g.nodes.length > 0 || groups.some((k) => k.parent === g.id && hasContent(k));
   const drawn = groups.filter((g) => {
     if (hasContent(g)) return true;
     notes.push(`group "${g.label || g.id}" has no nodes and is not drawn`);
@@ -144,7 +176,7 @@ export function normalize(spec) {
   const legacy = spec.template === 'topology' && LEGACY_SCALE.includes(layout) && spec.nodeScale < 0.5;
 
   return {
-    nodes, links, groups: drawn, byId, notes,
+    nodes, links, groups: drawn, byId, groupById: new Map(drawn.map((g) => [g.id, g])), notes,
     opts: {
       layout,
       direction: spec.direction || 'right',
