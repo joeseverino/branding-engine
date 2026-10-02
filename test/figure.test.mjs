@@ -23,19 +23,19 @@ test('palette derives distinct light and dark themes from tokens', () => {
   assert.notEqual(light.line, dark.line);
 });
 
-test('figureSize defaults radial topologies to 3:2 and everything else to cover', () => {
+test('figureSize: radial graphs 3:2, other graphs content-sized, classic templates cover', () => {
   assert.deepEqual(figureSize({ template: 'topology', layout: 'star' }), [1500, 1000]);
   assert.deepEqual(figureSize({ template: 'topology', layout: 'ring' }), [1500, 1000]);
-  // row → short banner sized to node count (width 1600, height < 16:9)
-  const [rw, rh] = figureSize({ template: 'topology', layout: 'row', nodes: [{}, {}] });
-  assert.equal(rw, 1600);
-  assert.ok(rh < 900 && rh >= 470, `row height ${rh} should be a short banner`);
+  assert.deepEqual(figureSize({ template: 'topology', nodes: [{ id: 'a', pos: 'center' }] }), [1500, 1000]);
+  // every other graph is sized to its content at render time
+  assert.equal(figureSize({ template: 'topology', layout: 'row', nodes: [{}, {}] }), null);
+  assert.equal(figureSize({ template: 'diagram' }), null);
   assert.deepEqual(figureSize({ template: 'title' }), [1600, 900]);
   assert.deepEqual(figureSize({ template: 'topology', layout: 'star', size: 'og' }), [1200, 630]);
 });
 
 test('the seed templates are registered', () => {
-  assert.deepEqual(Object.keys(TEMPLATES).sort(), ['diamond', 'flow', 'nodes', 'title', 'topology']);
+  assert.deepEqual(Object.keys(TEMPLATES).sort(), ['diagram', 'diamond', 'flow', 'nodes', 'title', 'topology']);
 });
 
 test('readTokens returns {} for no path and parses brand-* vars', () => {

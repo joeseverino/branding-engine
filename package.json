@@ -20,7 +20,8 @@
     "src",
     "assets",
     "examples",
-    "index.mjs"
+    "index.mjs",
+    "!examples/figures/*.png"
   ],
   "engines": {
     "node": ">=20.9"
@@ -46,6 +47,7 @@
     "access": "public"
   },
   "dependencies": {
+    "elkjs": "^0.12.0",
     "opentype.js": "^2.0.0",
     "sharp": "^0.35.3",
     "wawoff2": "^2.0.1"

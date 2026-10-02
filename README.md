@@ -409,30 +409,154 @@ basename and only affects filenames (`<name>.svg` for vector tiles,
 
 ## Figures
 
-Designed, brand-themed graphics for writeup covers, README banners, and OG/social
-cards, driven by a small JSON spec instead of code. Same headless-Chromium + bundled
-Inter pipeline as the social cards; for flowcharts and sequence diagrams use Mermaid
-(the `diagram` tool) instead.
+Designed, brand-themed graphics for writeups, README banners, and OG/social cards, from a
+small spec instead of code. Same headless-Chromium + bundled Inter pipeline as the social
+cards.
 
 ```bash
-branding-engine figure cover.figure.json \
+branding-engine figure secrets.fig \
   --tokens ./kits/severino-labs/web/tokens.css \
-  --out cover.png            # defaults to <spec>.png
+  --out secrets.png          # defaults to <spec>.png
 ```
 
-A spec is one object. `template` and its fields are the only required parts; everything
-else has a default.
+### Diagrams: the `.fig` format
 
-| Field | Default | Notes |
+Write the nodes and the arrows; the engine lays them out (ELK's layered algorithm), measures
+every label, keeps labels off lines, draws groups, and fits the result to the frame.
+
+```text
+title: Secrets flow
+subtitle: secret store
+
+Laptop [icon: laptop, note: Touch ID]
+Secret store [icon: key, anchor]
+Private network [dashed] {
+  app-server [icon: server, note: renders hourly]
+  Identity provider [icon: lock]
+  Container UI [icon: container]
+}
+Cloud VM [icon: cloud, note: service account]
+
+Laptop <> Secret store: SSH · sudo [dashed]
+Secret store > app-server: read-only token
+Secret store > Cloud VM: one vault
+app-server > Identity provider, Container UI: inject
+```
+
+![Secrets flow rendered from the .fig above](./examples/figures/secrets-flow.png)
+
+- **Nodes**: `Name [props]`. The name is the id and the default label; a name first used in a
+  connection becomes a plain node. Props are `key: value` pairs or flags: `anchor`, `attacker`,
+  `muted` (role), `box` (shape). Quote a name that holds an arrow, a comma or `: `
+  (`"Build > Test"`).
+- **Arrows** (spaces around them): `>` `<` `<>` `-` are solid, `-->` `<--` `<-->` `--` are dashed.
+  `->`, `<-`, `<->` also work. Chain them (`A > B > C`), fan out (`A > B, C`), label with
+  `: text`, and add link props at the end: `A > B: text [dotted, accent, width: 4]`. A link
+  from a node to itself, or an arrow with nothing on one side, is an error.
+- **Groups**: `Label [dashed] { ... }`, nested as deep as needed. Declaring a node inside a
+  group (its name on its own line, or with `[props]`) puts it there; a name first mentioned in a
+  link inside a group joins it unless it is declared elsewhere. A node sits in one group.
+- **Links to groups**: use a group's label as a link end (`Mac <> Servers: user cert`) and the
+  line stops at the group's border, so one link and one label stand for every member. The group
+  can be declared above or below the link. Two groups with the same label, a node and a group with
+  the same name, or a link between a group and something inside it are errors.
+- **Directives**: `title`, `subtitle`, `layout`, `direction` (`right` default, `down`, `left`,
+  `up`), `routing` (`orthogonal` default, `straight`, `curved`), `theme`, `size` (`cover` or
+  `1600x900`), `textScale`, `nodeScale`, `spread`. An unknown directive is an error with a
+  suggestion (`layot: auto` → did you mean `layout`?), and so is Mermaid-style `A->B`.
+- Quote values that hold commas; `\n` breaks a line. `#` and `//` start a comment at the start
+  of a line or after a space, so `C#` and `https://` are safe. Every problem in a file is reported
+  at once, with its line number.
+
+Examples: [`examples/figures/`](./examples/figures) (a nested-group mesh network, a star lab, a
+dark pipeline of box nodes).
+
+### Warnings and `--strict`
+
+After layout the engine checks its own work and prints a `warn` line for anything a reviewer
+would catch by eye: labels that overlap each other, a node, or a link (a group's label first slides
+along its top edge to clear any line); a group that covers a node
+it does not contain; an empty group or a self-link in a JSON spec (neither is drawn); text scaled
+below 70% to fit the frame. `--strict` turns any warning into a failure and writes nothing, for
+CI or for an agent that cannot look at the PNG.
+
+Before warning about small text, `auto` layout tries to fix it: it wraps a long run into rows
+that still read left to right, tries top to bottom when no `direction` was set, and finally
+shrinks circles and gaps (never the text). A graph that is wide by nature (eight or more nodes in
+one chain of steps, plus groups) can still land under 70%: split it, or set a `size` and accept
+the warning.
+
+### JSON specs
+
+A `.fig` compiles to the JSON `topology` (alias `diagram`) spec, which can also be written
+directly. Every key is validated: an unknown key or value fails with its path and a suggestion
+(`node "a".labelpos: unknown key (did you mean "labelPos"?)`).
+
+| Top level | Default | Notes |
 |---|---|---|
-| `template` | — | `title`, `flow`, `diamond`, `nodes`, or `topology` |
-| `size` | `cover` (radial `topology` → `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og` 1200×630, `github` 1280×640, `square`) or `[w, h]` |
+| `template` | (required) | `topology` / `diagram`, or a classic template below |
+| `layout` | `auto` (`star` if any node has `pos`, `free` if any has `at`, `row` if the spec has no `links` key) | `auto`, `star`, `ring`, `row`, `grid`, `free` |
+| `size` | content-sized, 1600 wide (`star`/`ring`: `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og`, `github`, `square`) or `[w, h]`; content is scaled to fit and centered |
 | `theme` | `light` | `light` or `dark` |
-| `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` override |
+| `title`, `subtitle` | none | header in the cover style |
+| `direction`, `routing` | `right`, `orthogonal` | `auto` layout only. With no `direction`, a figure too wide to read may wrap or turn to `down` |
+| `textScale`, `nodeScale`, `spread` | `1` | text size, circle size, spacing multipliers. In `topology` specs with a fixed layout (`star`, `ring`, `row`, `free`), a `nodeScale` under 0.5 is read the old way, as a fraction of the frame (0.16 was the default) |
+| `fit` | `true` | `false` keeps layout scale (still centered) |
+| `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` |
 
-Output renders at 2× the logical size (override with `--scale`) for crisp text.
+| Node key | Notes |
+|---|---|
+| `id` | required, unique |
+| `label`, `note` | `note` is a lighter second line (`addr` is accepted as an alias) |
+| `icon` | `laptop monitor desktop server database switch router cloud phone home key shield grid user bot lock globe terminal firewall container file wifi cpu mail code` |
+| `shape` | `circle` (glyph, label outside) or `box` (label inside, optional glyph) |
+| `role` | `anchor` / `attacker` fill the node; `muted` dashes it in gray |
+| `color` | hex or `accent`, `deep`, `ink`, `muted` |
+| `group` | group id (or list the node in the group's `nodes`) |
+| `pos` | `star`: `center`, `n s e w ne nw se sw`. Omit and spokes are assigned w, e, s, n, ... around the anchor |
+| `at` | `free`: `[x, y]` fractions of the frame. `grid`: `[col, row]` |
+| `scale` | per-node circle size |
+| `labelPos`, `labelAt`, `labelW` | pin the label (`below above left right ne nw se sw`), offset it `[dx, dy]` from center, or set its wrap width. Default is automatic placement |
 
-**`title`** — eyebrow + headline + optional sub-line and footer. The all-purpose cover/banner.
+| Link key | Notes |
+|---|---|
+| `from`, `to` | node or group ids (checked, with suggestions); a group end stops at its border |
+| `label` | a chip on the line |
+| `fromLabel`, `toLabel` | small text past each arrowhead (an IP octet) |
+| `dir` | `to`, `from`, `both` (default), `none` |
+| `style` | `solid`, `dashed` (real dashes; the round-dot look of 0.7 and earlier is `dotted`), `dotted` |
+| `color`, `width` | `accent` draws an overlay/attack path with a bordered chip |
+| `curve` | bend as a fraction of length (fixed layouts); parallel links bend apart on their own |
+
+| Group key | Notes |
+|---|---|
+| `id`, `label` | the label is the container's eyebrow |
+| `nodes` | member node ids |
+| `parent` | another group's id, for nesting |
+| `style`, `color` | `dashed` border; border color |
+
+Layouts: `auto` (ELK, the default), `star` (hub and spokes, straight by construction; the hub
+label takes the widest gap), `ring`, `row` (a chain; omitting `links` chains the nodes in
+order), `grid`, and `free` (explicit `at`). The fixed layouts place link chips and node labels
+by scoring candidate spots against every line, node and label.
+
+### Upgrading from 0.7
+
+- `TEMPLATES.topology` and `TEMPLATES.diagram` are the marker string `'graph'`, not a render
+  function: graph figures measure their text in the page, so render them with `renderFigure`.
+- `figureSize(spec)` returns `null` for a graph with no `size` and a non-radial layout, since its
+  canvas follows the drawing.
+- Specs are validated: unknown keys and values that used to be ignored now throw
+  `FigureSpecError`, and a link to a missing node is an error instead of being dropped.
+- A spec with links but no `layout` and no positions now gets `auto` layout (it used to be a
+  row). A spec with no `links` key still chains its nodes in a row.
+- `style: dashed` draws real dashes; use `dotted` for the old look.
+
+### Classic templates
+
+Fixed-geometry cards, still supported:
+
+**`title`**: eyebrow + headline + optional sub-line and footer. The all-purpose cover/banner.
 
 ```json
 { "template": "title", "size": "og", "theme": "dark",
@@ -440,8 +564,7 @@ Output renders at 2× the logical size (override with `--scale`) for crisp text.
   "subline": "Identity-based intrusion mapped to MITRE ATT&CK.", "footer": "jseverino.com" }
 ```
 
-**`flow`** — stacked left-to-right step chains (before/after, pipelines). `rows[].anchor`
-highlights one step in the brand accent.
+**`flow`**: stacked left-to-right step chains (before/after). `rows[].anchor` highlights one step.
 
 ```json
 { "template": "flow", "theme": "light", "rows": [
@@ -449,60 +572,12 @@ highlights one step in the brand accent.
   { "label": "After", "steps": ["Markdown", "Astro", "Cloudflare"], "anchor": "Cloudflare" } ] }
 ```
 
-**`diamond`** — the four-vertex model around a center node (`top`/`left`/`right`/`bottom` + `center`).
+**`diamond`**: the four-vertex model around a center (`top`/`left`/`right`/`bottom` + `center`).
 
-```json
-{ "template": "diamond", "theme": "dark", "center": "M&S\n2025",
-  "nodes": { "top": "Adversary", "left": "Capability", "right": "Infrastructure", "bottom": "Victim" } }
-```
+**`nodes`**: a generic graph of label boxes: `layout` of `row`, `ring`, or `grid`, a `nodes`
+list, and an optional `center`.
 
-**`nodes`** — a generic graph: `layout` of `row`, `ring`, or `grid`, a `nodes` list, and an
-optional `center`. `\n` breaks a line in any label.
-
-**`topology`** — network / lab topologies that keep the topology look: a device glyph per
-node in a ringed circle, a node label, and links that carry a network name or IP. Use this
-(not `flow`) when the graphic is devices on a network rather than a boxes-and-arrows
-pipeline.
-
-`layout` options, easiest first:
-
-- **`star`** — hub-and-spoke. Each node sets `pos`: `center` for the hub, then `n`/`s`/`e`/`w`/
-  `ne`/`nw`/`se`/`sw`. The engine snaps `e`/`w` to the hub's exact y and `n`/`s` to its exact x,
-  so spoke links are **dead straight by construction** — no hand-tuned coordinates. The hub's
-  label auto-parks in the first empty diagonal quadrant. Use this for almost every network diagram.
-- **`row`** — nodes evenly spaced left→right (pipelines, before/after).
-- **`ring`** — nodes evenly around an optional `center`.
-- **`free`** — each node placed by `at: [xFraction, yFraction]` (0..1 of the canvas) with an
-  optional `scale`. The escape hatch for arrangements the others can't express.
-
-Omit `size` and the frame follows the layout: radial `star`/`ring` topologies use the 3:2 `topo`
-frame (legible on mobile, where width is the constraint); a `row` becomes a short, wide banner whose
-height is sized to the node count, so a 2-node diagram fills the frame instead of floating in 16:9.
-An explicit `size` always wins.
-
-Each node takes `{ id, icon, label, role?, at?, scale?, labelPos? }`; `icon` is one of
-`laptop`, `monitor`, `server`, `database`, `switch`, `router`, `cloud`, `phone`; `role` of
-`anchor` or `attacker` fills the node in the brand accent; `labelPos` is `above`/`below`.
-Links are `{ from, to, label?, fromLabel?, toLabel?, style?, dir?, color? }` where `style`
-is `dashed`, `dir` is `to`/`both`/`none`, `color: "accent"` draws the link (and a bordered
-label chip) in the brand accent for an attack/overlay path, and `fromLabel`/`toLabel` print
-a small label under each endpoint (e.g. the IP octet beside each host). Omitting `links` in
-a `row` chains the nodes in order.
-
-```json
-{ "template": "topology", "layout": "ring", "theme": "light",
-  "center": { "id": "s1", "icon": "switch", "label": "s1\nOpen vSwitch", "role": "anchor" },
-  "nodes": [
-    { "id": "c0", "icon": "server", "label": "c0\nSDN Controller" },
-    { "id": "h1", "icon": "monitor", "label": "h1\nVictim" },
-    { "id": "h3", "icon": "monitor", "label": "h3\nAttacker", "role": "attacker" },
-    { "id": "h2", "icon": "monitor", "label": "h2\nTarget" } ],
-  "links": [
-    { "from": "c0", "to": "s1", "label": "OpenFlow", "style": "dashed", "dir": "to" },
-    { "from": "h1", "to": "s1", "dir": "both" },
-    { "from": "h2", "to": "s1", "dir": "both" },
-    { "from": "h3", "to": "s1", "dir": "both" } ] }
-```
+Output renders at 2× the logical size (override with `--scale`).
 
 ## Stages
 
@@ -593,6 +668,13 @@ Main exports:
 - `normalizeGlyph(glyph)`
 - `renderCard(browser, options)`
 - `launchBrowser()`
+- `makeFigure(options)` / `readSpec(path)`: render a `.fig` or JSON spec file; `strict: true`
+  throws on warnings before anything is written
+- `renderFigure(browser, spec, options)`: one spec on a caller-owned browser, returning the PNG
+  buffer and its `warnings`
+- `parseFig(text)`: `.fig` text to a JSON spec; throws `FigureSpecError` (with `.errors`)
+- `figureSize(spec)`: the canvas for classic and radial specs; `null` for content-sized graphs
+- `palette(theme, tokens)` / `SIZES` / `TEMPLATES`
 
 ## Fonts and Glyph Extraction
 

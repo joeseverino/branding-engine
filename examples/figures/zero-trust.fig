@@ -1,0 +1,22 @@
+# Nothing public: every hop rides the mesh VPN.
+title: Zero-trust private infrastructure
+subtitle: nothing public
+
+Laptop [icon: laptop]
+Phone [icon: phone]
+Internet [icon: globe, muted]
+
+Mesh VPN {
+  Home network [dashed] {
+    Router [icon: router, note: subnet router]
+    app-server [icon: server, note: containers · DNS]
+  }
+  Cloud [dashed] {
+    Edge proxy [icon: cloud, note: TLS · status page]
+  }
+}
+
+Laptop > Router: WireGuard
+Phone > Edge proxy: WireGuard
+Router > app-server
+Internet -- "Mesh VPN": dropped [muted]

@@ -4,7 +4,7 @@
 //   branding-engine generate [--public <dir>] [--config <file>]   favicons + manifest + tokens -> public/
 //   branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only a,b]
 //   branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font f] [--out d] [--only a,b]
-//   branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]
+//   branding-engine figure <spec.fig|spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2] [--strict]
 //   branding-engine pictogram <glyph> <hex> [--name n] [--out <dir>] [--size 512]
 //   branding-engine pictogram --spec <file.json> [--out <dir>]
 // Stages for --only: mark, wordmark, sheet, web, cards (mark includes favicons).
@@ -14,6 +14,8 @@ import { generateSite, initSite } from '../src/site.mjs';
 import { makeFigure } from '../src/make-figure.mjs';
 import { makePictogram, makePictograms } from '../src/make-pictogram.mjs';
 
+const BOOLEAN_FLAGS = new Set(['strict', 'circle-preview']);
+
 function parse(argv) {
   const pos = [];
   const opt = {};
@@ -22,7 +24,7 @@ function parse(argv) {
     if (a.startsWith('--')) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      opt[key] = next && !next.startsWith('--') ? argv[++i] : true;
+      opt[key] = !BOOLEAN_FLAGS.has(key) && next && !next.startsWith('--') ? argv[++i] : true;
     } else {
       pos.push(a);
     }
@@ -37,8 +39,10 @@ const USAGE =
   '  branding-engine build [--config <dir|brand.json>] [--out <dir>] [--only mark,wordmark,sheet,web,cards]\n' +
   '  branding-engine kit <slug> <hex> <glyph> ["Wordmark"] [--font <file>] [--out <dir>] [--only ...]\n' +
   '    <glyph> is 1-3 letters or digits, e.g. A, AC, or A3X.\n' +
-  '  branding-engine figure <spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2]\n' +
-  '    templates: title, flow, diamond, nodes. Defaults output to <spec>.png.\n' +
+  '  branding-engine figure <spec.fig|spec.json> [--out <png>] [--tokens <tokens.css>] [--scale 2] [--strict]\n' +
+  '    .fig: the text diagram format (auto layout, groups). JSON templates: title, flow, diamond,\n' +
+  '    nodes, topology (alias diagram). Defaults output to <spec>.png. Prints layout warnings;\n' +
+  '    --strict fails on any.\n' +
   '  branding-engine pictogram <glyph> <color> [--name <n>] [--out <dir>] [--size 512] [--circle-preview]\n' +
   '  branding-engine pictogram --text <ABC> <color> [...same flags]\n' +
   '  branding-engine pictogram --logo <file.svg|png> <color> [--tint <color>] [--fit 0.62] [...same flags]\n' +
@@ -84,7 +88,7 @@ try {
       console.error(USAGE);
       process.exit(1);
     }
-    await makeFigure({ specPath, out: opt.out, tokensPath: opt.tokens, scale: opt.scale });
+    await makeFigure({ specPath, out: opt.out, tokensPath: opt.tokens, scale: opt.scale, strict: Boolean(opt.strict) });
   } else if (cmd === 'pictogram') {
     let written;
     if (opt.spec) {

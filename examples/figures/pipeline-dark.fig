@@ -1,0 +1,17 @@
+# Box nodes and a dark theme for a build pipeline.
+theme: dark
+title: From Markdown to the edge
+subtitle: static site
+
+Vault [box, icon: file, note: Obsidian]
+GitHub [dashed] {
+  Actions [box, icon: cpu, note: Astro build]
+}
+Cloudflare [dashed] {
+  Pages [box, icon: globe, anchor, note: static site]
+  D1 [box, icon: database, note: contact form]
+}
+
+Vault > Actions: site publish
+Actions > Pages: deploy
+Pages > D1

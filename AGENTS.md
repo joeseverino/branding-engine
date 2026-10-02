@@ -36,11 +36,27 @@ npm i -D @playwright/test && npx playwright install chromium
 - `src/` — one module per concern: `build.mjs` (`buildBrand` / `buildKit`),
   `make-mark.mjs`, `make-wordmark.mjs`, `make-sheet.mjs`, `make-web.mjs`,
   `make-cards.mjs`, plus glyph/font helpers.
+- `src/lib/figure/` — the figure renderer. `index.mjs` (render: measure pass,
+  then final page), `schema.mjs` (every spec key, with suggestions), `dsl.mjs`
+  (the `.fig` parser), `classic.mjs` (title/flow/diamond/nodes), and `graph/`
+  for topology/diagram: `normalize` → measure → `layout-elk` (auto) or
+  `layout-geo` (star/ring/row/grid/free) → `place` (labels) → `frame` (groups,
+  fit, warnings) → `draw`. `parts.mjs` renders each text piece for both measuring
+  and drawing, so reserved and painted boxes match.
 - `examples/severino-labs/` — a sample `brand.json` plus its committed
   `generated/` output, used as a snapshot in tests.
-- `test/` — `smoke.test.mjs` (browser-free) and `browser.test.mjs` (snapshot).
+- `examples/figures/` — showcase `.fig` sources and their renders. Re-render
+  after a visual change: `for f in examples/figures/*.fig; do node bin/cli.mjs
+  figure "$f" --strict; done`. Keep them generic: no real hosts or services.
+- `test/` — `smoke.test.mjs` (browser-free), `browser.test.mjs` (snapshot),
+  `figure.test.mjs` and `figure-graph.test.mjs` (DSL, validation, layout,
+  placement, fit, render).
 
 ## Conventions & gotchas
+
+- **Figures check themselves.** A graph render returns `warnings` (overlaps,
+  text below 70%); look at the PNG anyway after any layout change, and keep the
+  showcase renders free of warnings.
 
 - **Output is deterministic.** A given config must always produce identical
   bytes. `test/browser.test.mjs` rebuilds the Severino Labs example and compares

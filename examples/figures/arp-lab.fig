@@ -1,0 +1,14 @@
+# Mininet ARP spoofing lab. A star needs no positions: the anchor is the hub
+# and the rest take w, e, s, n in the order they are declared.
+layout: star
+
+s1 [icon: switch, label: "s1\nOpen vSwitch", anchor]
+h1 [icon: monitor, label: "h1\nVictim"]
+h2 [icon: monitor, label: "h2\nTarget"]
+h3 [icon: monitor, label: "h3\nAttacker", attacker]
+c0 [icon: server, label: "c0\nSDN Controller"]
+
+h1 <> s1
+s1 <> h2
+s1 <> h3: spoofed ARP [accent]
+c0 <--> s1: OpenFlow
