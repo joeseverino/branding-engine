@@ -2,13 +2,16 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## 0.8.0 - 2026-10-02
 
 - Rebuild the `topology` figure (alias `diagram`) as a graph engine: a `.fig`
   text format, ELK automatic layout with orthogonal routing, measured labels
   kept off lines, nested groups, box nodes, a title header, dark-theme-aware
   colors, and a fit that never clips. Long figures wrap into rows before text
   is shrunk. Thirteen new glyphs.
+- Links can end at a group: name the group's label in `.fig` (its id in JSON) and
+  the line stops at the group's border. Group labels slide clear of crossing
+  lines, and unrelated links that nearly meet on one track are pulled apart.
 - Validate every figure spec, with suggestions, and report every `.fig`
   problem at once with line numbers. Print warnings for overlaps, small text,
   empty groups and self-links; `--strict` fails on any warning and writes
