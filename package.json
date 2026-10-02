@@ -20,7 +20,8 @@
     "src",
     "assets",
     "examples",
-    "index.mjs"
+    "index.mjs",
+    "!examples/figures/*.png"
   ],
   "engines": {
     "node": ">=20.9"

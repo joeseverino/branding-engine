@@ -409,30 +409,119 @@ basename and only affects filenames (`<name>.svg` for vector tiles,
 
 ## Figures
 
-Designed, brand-themed graphics for writeup covers, README banners, and OG/social
-cards, driven by a small JSON spec instead of code. Same headless-Chromium + bundled
-Inter pipeline as the social cards; for flowcharts and sequence diagrams use Mermaid
-(the `diagram` tool) instead.
+Designed, brand-themed graphics for writeups, README banners, and OG/social cards, from a
+small spec instead of code. Same headless-Chromium + bundled Inter pipeline as the social
+cards.
 
 ```bash
-branding-engine figure cover.figure.json \
+branding-engine figure secrets.fig \
   --tokens ./kits/severino-labs/web/tokens.css \
-  --out cover.png            # defaults to <spec>.png
+  --out secrets.png          # defaults to <spec>.png
 ```
 
-A spec is one object. `template` and its fields are the only required parts; everything
-else has a default.
+### Diagrams: the `.fig` format
 
-| Field | Default | Notes |
+Write the nodes and the arrows; the engine lays them out (ELK's layered algorithm), measures
+every label, keeps labels off lines, draws groups, and fits the result to the frame.
+
+```text
+title: Secrets flow
+subtitle: 1Password
+
+Mac [icon: laptop, note: Touch ID]
+1Password [icon: key, anchor]
+Homelab [dashed] {
+  homelab-server [icon: server, note: Connect on loopback]
+  Pocket ID [icon: lock]
+}
+Mac <> 1Password: SSH · sudo [dashed]
+1Password > homelab-server: read-only tokens
+homelab-server > Pocket ID
+```
+
+![Secrets flow rendered from the .fig above](./examples/figures/secrets-flow.png)
+
+- **Nodes**: `Name [props]`. The name is the id and the default label; a name first used in a
+  connection becomes a plain node. Props are `key: value` pairs or flags: `anchor`, `attacker`,
+  `muted` (role), `box` (shape).
+- **Arrows** (spaces around them): `>` `<` `<>` `-` are solid, `-->` `<--` `<-->` `--` are dashed.
+  `->`, `<-`, `<->` also work. Chain them (`A > B > C`), fan out (`A > B, C`), label with
+  `: text`, and add link props at the end: `A > B: text [dotted, accent, width: 4]`.
+- **Groups**: `Label [dashed] { ... }`, nested as deep as needed.
+- **Directives**: `title`, `subtitle`, `layout`, `direction` (`right` default, `down`, `left`,
+  `up`), `routing` (`straight`, `orthogonal`, `curved`), `theme`, `size` (`cover` or `1600x900`),
+  `textScale`, `nodeScale`, `spread`.
+- Quote values that hold commas or `#`; `\n` breaks a line. `#` and `//` start comments.
+
+Examples: [`examples/figures/`](./examples/figures) (a nested-group tailnet, a star lab, a
+dark pipeline of box nodes).
+
+### Warnings and `--strict`
+
+After layout the engine checks its own work and prints a `warn` line for anything a reviewer
+would catch by eye: labels that overlap each other, a node, or a link; a group that covers a node
+it does not contain; text scaled below 70% to fit the frame. `--strict` turns any warning into a
+failure, for CI or for an agent that cannot look at the PNG.
+
+### JSON specs
+
+A `.fig` compiles to the JSON `topology` (alias `diagram`) spec, which can also be written
+directly. Every key is validated: an unknown key or value fails with its path and a suggestion
+(`node "a".labelpos: unknown key (did you mean "labelPos"?)`).
+
+| Top level | Default | Notes |
 |---|---|---|
-| `template` | — | `title`, `flow`, `diamond`, `nodes`, or `topology` |
-| `size` | `cover` (radial `topology` → `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og` 1200×630, `github` 1280×640, `square`) or `[w, h]` |
+| `template` | (required) | `topology` / `diagram`, or a classic template below |
+| `layout` | `auto` (`star` if any node has `pos`, `free` if any has `at`) | `auto`, `star`, `ring`, `row`, `grid`, `free` |
+| `size` | content-sized, 1600 wide (`star`/`ring`: `topo`) | preset (`cover` 1600×900, `wide`, `topo` 1500×1000, `og`, `github`, `square`) or `[w, h]`; content is scaled to fit and centered |
 | `theme` | `light` | `light` or `dark` |
-| `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` override |
+| `title`, `subtitle` | none | header in the cover style |
+| `direction`, `routing` | `right`, `straight` | `auto` layout only |
+| `textScale`, `nodeScale`, `spread` | `1` | text size, circle size, spacing multipliers |
+| `fit` | `true` | `false` keeps layout scale (still centered) |
+| `colors` | from `--tokens` | inline `{ accent, deep, onAccent, ink, paper }` |
 
-Output renders at 2× the logical size (override with `--scale`) for crisp text.
+| Node key | Notes |
+|---|---|
+| `id` | required, unique |
+| `label`, `note` | `note` is a lighter second line (`addr` is accepted as an alias) |
+| `icon` | `laptop monitor desktop server database switch router cloud phone home key shield grid user bot lock globe terminal firewall container file wifi cpu mail code` |
+| `shape` | `circle` (glyph, label outside) or `box` (label inside, optional glyph) |
+| `role` | `anchor` / `attacker` fill the node; `muted` dashes it in gray |
+| `color` | hex or `accent`, `deep`, `ink`, `muted` |
+| `group` | group id (or list the node in the group's `nodes`) |
+| `pos` | `star`: `center`, `n s e w ne nw se sw`. Omit and spokes are assigned w, e, s, n, ... around the anchor |
+| `at` | `free`: `[x, y]` fractions of the frame. `grid`: `[col, row]` |
+| `scale` | per-node circle size |
+| `labelPos`, `labelAt`, `labelW` | pin the label (`below above left right ne nw se sw`), offset it `[dx, dy]` from center, or set its wrap width. Default is automatic placement |
 
-**`title`** — eyebrow + headline + optional sub-line and footer. The all-purpose cover/banner.
+| Link key | Notes |
+|---|---|
+| `from`, `to` | node ids (checked, with suggestions) |
+| `label` | a chip on the line |
+| `fromLabel`, `toLabel` | small text past each arrowhead (an IP octet) |
+| `dir` | `to`, `from`, `both` (default), `none` |
+| `style` | `solid`, `dashed`, `dotted` |
+| `color`, `width` | `accent` draws an overlay/attack path with a bordered chip |
+| `curve` | bend as a fraction of length (fixed layouts); parallel links bend apart on their own |
+
+| Group key | Notes |
+|---|---|
+| `id`, `label` | the label is the container's eyebrow |
+| `nodes` | member node ids |
+| `parent` | another group's id, for nesting |
+| `style`, `color` | `dashed` border; border color |
+
+Layouts: `auto` (ELK, the default), `star` (hub and spokes, straight by construction; the hub
+label takes the widest gap), `ring`, `row` (a chain; omitting `links` chains the nodes in
+order), `grid`, and `free` (explicit `at`). The fixed layouts place link chips and node labels
+by scoring candidate spots against every line, node and label.
+
+### Classic templates
+
+Fixed-geometry cards, still supported:
+
+**`title`**: eyebrow + headline + optional sub-line and footer. The all-purpose cover/banner.
 
 ```json
 { "template": "title", "size": "og", "theme": "dark",
@@ -440,8 +529,7 @@ Output renders at 2× the logical size (override with `--scale`) for crisp text.
   "subline": "Identity-based intrusion mapped to MITRE ATT&CK.", "footer": "jseverino.com" }
 ```
 
-**`flow`** — stacked left-to-right step chains (before/after, pipelines). `rows[].anchor`
-highlights one step in the brand accent.
+**`flow`**: stacked left-to-right step chains (before/after). `rows[].anchor` highlights one step.
 
 ```json
 { "template": "flow", "theme": "light", "rows": [
@@ -449,60 +537,12 @@ highlights one step in the brand accent.
   { "label": "After", "steps": ["Markdown", "Astro", "Cloudflare"], "anchor": "Cloudflare" } ] }
 ```
 
-**`diamond`** — the four-vertex model around a center node (`top`/`left`/`right`/`bottom` + `center`).
+**`diamond`**: the four-vertex model around a center (`top`/`left`/`right`/`bottom` + `center`).
 
-```json
-{ "template": "diamond", "theme": "dark", "center": "M&S\n2025",
-  "nodes": { "top": "Adversary", "left": "Capability", "right": "Infrastructure", "bottom": "Victim" } }
-```
+**`nodes`**: a generic graph of label boxes: `layout` of `row`, `ring`, or `grid`, a `nodes`
+list, and an optional `center`.
 
-**`nodes`** — a generic graph: `layout` of `row`, `ring`, or `grid`, a `nodes` list, and an
-optional `center`. `\n` breaks a line in any label.
-
-**`topology`** — network / lab topologies that keep the topology look: a device glyph per
-node in a ringed circle, a node label, and links that carry a network name or IP. Use this
-(not `flow`) when the graphic is devices on a network rather than a boxes-and-arrows
-pipeline.
-
-`layout` options, easiest first:
-
-- **`star`** — hub-and-spoke. Each node sets `pos`: `center` for the hub, then `n`/`s`/`e`/`w`/
-  `ne`/`nw`/`se`/`sw`. The engine snaps `e`/`w` to the hub's exact y and `n`/`s` to its exact x,
-  so spoke links are **dead straight by construction** — no hand-tuned coordinates. The hub's
-  label auto-parks in the first empty diagonal quadrant. Use this for almost every network diagram.
-- **`row`** — nodes evenly spaced left→right (pipelines, before/after).
-- **`ring`** — nodes evenly around an optional `center`.
-- **`free`** — each node placed by `at: [xFraction, yFraction]` (0..1 of the canvas) with an
-  optional `scale`. The escape hatch for arrangements the others can't express.
-
-Omit `size` and the frame follows the layout: radial `star`/`ring` topologies use the 3:2 `topo`
-frame (legible on mobile, where width is the constraint); a `row` becomes a short, wide banner whose
-height is sized to the node count, so a 2-node diagram fills the frame instead of floating in 16:9.
-An explicit `size` always wins.
-
-Each node takes `{ id, icon, label, role?, at?, scale?, labelPos? }`; `icon` is one of
-`laptop`, `monitor`, `server`, `database`, `switch`, `router`, `cloud`, `phone`; `role` of
-`anchor` or `attacker` fills the node in the brand accent; `labelPos` is `above`/`below`.
-Links are `{ from, to, label?, fromLabel?, toLabel?, style?, dir?, color? }` where `style`
-is `dashed`, `dir` is `to`/`both`/`none`, `color: "accent"` draws the link (and a bordered
-label chip) in the brand accent for an attack/overlay path, and `fromLabel`/`toLabel` print
-a small label under each endpoint (e.g. the IP octet beside each host). Omitting `links` in
-a `row` chains the nodes in order.
-
-```json
-{ "template": "topology", "layout": "ring", "theme": "light",
-  "center": { "id": "s1", "icon": "switch", "label": "s1\nOpen vSwitch", "role": "anchor" },
-  "nodes": [
-    { "id": "c0", "icon": "server", "label": "c0\nSDN Controller" },
-    { "id": "h1", "icon": "monitor", "label": "h1\nVictim" },
-    { "id": "h3", "icon": "monitor", "label": "h3\nAttacker", "role": "attacker" },
-    { "id": "h2", "icon": "monitor", "label": "h2\nTarget" } ],
-  "links": [
-    { "from": "c0", "to": "s1", "label": "OpenFlow", "style": "dashed", "dir": "to" },
-    { "from": "h1", "to": "s1", "dir": "both" },
-    { "from": "h2", "to": "s1", "dir": "both" },
-    { "from": "h3", "to": "s1", "dir": "both" } ] }
-```
+Output renders at 2× the logical size (override with `--scale`).
 
 ## Stages
 
