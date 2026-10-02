@@ -42,21 +42,67 @@ export async function renderGraph(spec, c, measure) {
   const labelH = Math.max(0, ...[...groupSizes.values()].map((s) => s.h));
   const groupPad = { top: Math.round(26 * ts + labelH + 30), side: Math.round(34 * ts) };
 
+  // Radial layouts keep the 3:2 frame they always had; the rest size to content.
+  const sizePx = G.opts.size ? resolveSize(G.opts.size) : isRadial(G.opts.layout) ? resolveSize('topo') : null;
+  // The title shrinks with the drawing (not below 72%) so it stays in proportion.
+  const frameFor = () => {
+    const B = contentBounds(G);
+    const fit = { sizePx, fit: G.opts.fit };
+    if (!titleSize.h) return fitFrame(B, fit, 0);
+    const first = fitFrame(B, fit, titleSize.h + 40, titleSize.w);
+    const k = Math.min(1, Math.max(0.72, first.s));
+    return { ...fitFrame(B, fit, (titleSize.h + 40) * k, titleSize.w * k), titleScale: k };
+  };
+
   if (G.opts.layout === 'auto') {
-    await layoutElk(G, groupPad);
+    // Left to right reads best. When it would shrink the text and the author
+    // left the direction open, try top to bottom and keep it if it is clearly
+    // larger.
+    // The author's direction (left to right by default) first. If that shrinks
+    // the text below 70%, wrap it into rows; if the direction was left open,
+    // also try top to bottom. A fallback wins only when clearly larger.
+    const tries = [{ dir: G.opts.direction }];
+    const horizontal = G.opts.direction === 'right' || G.opts.direction === 'left';
+    if (horizontal) tries.push({ dir: G.opts.direction, wrap: true });
+    if (!G.opts.directionSet) tries.push({ dir: 'down' });
+    let best, last;
+    for (const t of tries) {
+      if (best && best.s >= 0.7) break;
+      await layoutElk(G, groupPad, t.dir, t);
+      placeEndLabels(G);
+      last = t;
+      const s = frameFor().s;
+      if (!best || s > best.s * 1.12) best = { ...t, s, t };
+    }
+    if (best.t !== last) {
+      await layoutElk(G, groupPad, best.dir, best);
+      placeEndLabels(G);
+    }
+    // Still small: a dense graph. Shrink the circles and the gaps, not the text.
+    if (best.s < 0.7) {
+      const keep = { spread: G.opts.spread, d: G.nodes.map((n) => n.d) };
+      G.opts.spread *= 0.8;
+      for (const n of G.nodes) if (n.d) n.d = Math.round(n.d * 0.8);
+      await layoutElk(G, groupPad, best.dir, best);
+      placeEndLabels(G);
+      if (frameFor().s <= best.s * 1.04) {
+        G.opts.spread = keep.spread;
+        G.nodes.forEach((n, i) => { n.d = keep.d[i]; });
+        await layoutElk(G, groupPad, best.dir, best);
+        placeEndLabels(G);
+      }
+    }
+    G.opts.direction = best.dir;
+    G.opts.wrapped = Boolean(best.wrap);
   } else {
     layoutGeo(G);
     placeChips(G);
     placeLabels(G);
     groupRectsGeo(G, groupPad);
+    placeEndLabels(G);
   }
-  placeEndLabels(G);
 
-  const B = contentBounds(G);
-  // Radial layouts keep the 3:2 frame they always had; the rest size to content.
-  const sizePx = G.opts.size ? resolveSize(G.opts.size) : isRadial(G.opts.layout) ? resolveSize('topo') : null;
-  const titleBand = titleSize.h ? titleSize.h + 40 : 0;
-  const frame = fitFrame(B, { sizePx, fit: G.opts.fit }, titleBand);
+  const frame = frameFor();
   const warnings = collectWarnings(G, frame.s);
   const html = drawGraph(G, c, frame, { group: groupSizes });
   return { html, W: frame.W, H: frame.H, warnings, graph: G, frame };

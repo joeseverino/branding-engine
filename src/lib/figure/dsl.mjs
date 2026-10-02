@@ -1,33 +1,39 @@
 // The .fig text format: a terse way to write a topology spec.
 //
-//   title: Secrets flow
+//   title: Request path
 //   layout: auto                    # auto | star | ring | row | grid | free
 //   direction: right                # auto layout only
 //
-//   1Password [icon: database, anchor]
-//   Mac [icon: laptop, note: Touch ID]
+//   Laptop [icon: laptop]
+//   Gateway [icon: shield, anchor, note: auth + TLS]
 //
-//   Homelab [dashed] {              # a group; nest freely
-//     homelab-server [icon: server]
+//   Private network [dashed] {      # a group; nest freely
+//     app-server [icon: server]
+//     Database [icon: database]
 //   }
 //
-//   Mac <> 1Password: SSH keys [dashed]
-//   1Password > homelab-server, Cloud VPS: secrets
+//   Laptop > Gateway: HTTPS
+//   Gateway > app-server > Database
 //
 // Arrows: >  <  <>  -   (solid)   -->  <--  <-->  --   (dashed)
 // `->`, `<-` and `<->` are accepted as aliases. Operators need spaces around
-// them, so names like `homelab-server` are safe. A name used in a connection
-// before it is declared becomes a plain node. Everything compiles to the same
-// JSON spec the topology template takes.
-import { FigureSpecError } from './schema.mjs';
+// them, so `app-server` is one name. Quote a name that contains an operator,
+// a comma or a colon: "Build > Test". A name used in a link before it is
+// declared becomes a plain node; only a declaration (the name on its own line,
+// or with [props]) puts a node in the group it sits in. Comments start with #
+// or // at the start of a line or after a space. Everything compiles to the
+// JSON spec the topology template takes, and every problem in the file is
+// reported at once, with its line number.
+import { checkObject, FigureSpecError, GROUP, LINK, NODE, suggest } from './schema.mjs';
 
-const DIRECTIVES = ['title', 'subtitle', 'layout', 'direction', 'theme', 'size', 'routing', 'textScale', 'nodeScale', 'spread'];
+export const DIRECTIVES = ['title', 'subtitle', 'layout', 'direction', 'theme', 'size', 'routing', 'textScale', 'nodeScale', 'spread'];
+// Directives that may also be written without a colon: `layout star`.
+const BARE = ['layout', 'direction', 'theme', 'size', 'routing'];
 const OPERATORS = [
   ['<-->', 'both', 'dashed'], ['-->', 'to', 'dashed'], ['<--', 'from', 'dashed'],
   ['<->', 'both'], ['<>', 'both'], ['->', 'to'], ['<-', 'from'],
   ['--', 'none', 'dashed'], ['>', 'to'], ['<', 'from'], ['-', 'none'],
 ];
-const OP_RE = new RegExp(`\\s(${OPERATORS.map(([o]) => o.replace(/[-<>]/g, (c) => `\\${c}`)).join('|')})\\s`);
 
 const NODE_FLAGS = {
   anchor: ['role', 'anchor'], attacker: ['role', 'attacker'], muted: ['role', 'muted'],
@@ -39,32 +45,88 @@ const LINK_FLAGS = {
 };
 const GROUP_FLAGS = { dashed: ['style', 'dashed'], solid: ['style', 'solid'] };
 
-const unescape = (s) => s.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+const NODE_PROPS = Object.fromEntries(Object.entries(NODE).filter(([k]) => k !== 'id' && k !== 'group'));
+const LINK_PROPS = Object.fromEntries(Object.entries(LINK).filter(([k]) => k !== 'from' && k !== 'to'));
+const GROUP_PROPS = Object.fromEntries(Object.entries(GROUP).filter(([k]) => !['id', 'nodes', 'parent'].includes(k)));
+const KINDS = {
+  node: { flags: NODE_FLAGS, keys: NODE_PROPS },
+  link: { flags: LINK_FLAGS, keys: LINK_PROPS },
+  group: { flags: GROUP_FLAGS, keys: GROUP_PROPS },
+};
 
-// Split on `sep` at depth 0, outside quotes.
-function splitTop(s, sep) {
-  const out = [];
-  let depth = 0, quote = false, cur = '';
+const unescape = (s) => s.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+const unquote = (s) => {
+  const t = s.trim();
+  return t.length >= 2 && t.startsWith('"') && t.endsWith('"') ? unescape(t.slice(1, -1)) : unescape(t);
+};
+
+// Walk `s` outside quotes and brackets, calling fn(i) at each top-level index;
+// fn returns a number of characters to skip, or undefined.
+function walkTop(s, fn) {
+  let depth = 0, quote = false;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch === '\\' && quote) { cur += ch + (s[i + 1] ?? ''); i++; continue; }
-    if (ch === '"') quote = !quote;
-    else if (!quote && (ch === '[' || ch === '(')) depth++;
-    else if (!quote && (ch === ']' || ch === ')')) depth--;
-    if (!quote && depth === 0 && s.startsWith(sep, i)) { out.push(cur); cur = ''; i += sep.length - 1; continue; }
-    cur += ch;
+    if (quote) {
+      if (ch === '\\') i++;
+      else if (ch === '"') quote = false;
+      continue;
+    }
+    if (ch === '"') { quote = true; continue; }
+    if (ch === '[' || ch === '(') { depth++; continue; }
+    if (ch === ']' || ch === ')') { depth--; continue; }
+    if (depth === 0) {
+      const skip = fn(i);
+      if (skip === false) return;
+      if (skip) i += skip - 1;
+    }
   }
-  out.push(cur);
+}
+
+function splitTop(s, sep) {
+  const out = [];
+  let from = 0;
+  walkTop(s, (i) => {
+    if (!s.startsWith(sep, i)) return undefined;
+    out.push(s.slice(from, i));
+    from = i + sep.length;
+    return sep.length;
+  });
+  out.push(s.slice(from));
   return out;
 }
 
 function stripComment(line) {
-  let quote = false;
-  for (let i = 0; i < line.length; i++) {
-    if (line[i] === '"' && line[i - 1] !== '\\') quote = !quote;
-    if (!quote && (line[i] === '#' || (line[i] === '/' && line[i + 1] === '/'))) return line.slice(0, i);
-  }
-  return line;
+  let cut = line.length;
+  walkTop(line, (i) => {
+    const start = i === 0 || /\s/.test(line[i - 1]);
+    if (start && (line[i] === '#' || line.startsWith('//', i))) { cut = i; return false; }
+    return undefined;
+  });
+  return line.slice(0, cut);
+}
+
+// Operators at top level with whitespace on both sides. Returns the pieces
+// between them, the operators, and whether one dangles at either end.
+function splitOps(s) {
+  const t = ` ${s} `;
+  const parts = [], ops = [];
+  let from = 0;
+  walkTop(t, (i) => {
+    if (!/\s/.test(t[i])) return undefined;
+    for (const op of OPERATORS) {
+      const end = i + 1 + op[0].length;
+      if (t.startsWith(op[0], i + 1) && /\s/.test(t[end] || '')) {
+        parts.push(t.slice(from, i));
+        ops.push(op);
+        from = end;
+        return op[0].length + 1;
+      }
+    }
+    return undefined;
+  });
+  parts.push(t.slice(from));
+  const trimmed = parts.map((p) => p.trim());
+  return { parts: trimmed, ops, dangling: ops.length > 0 && (!trimmed[0] || !trimmed[trimmed.length - 1]) };
 }
 
 function parseValue(raw) {
@@ -76,8 +138,12 @@ function parseValue(raw) {
   return unescape(v);
 }
 
-// "[a: 1, b: "x, y", flag]" → { a: 1, b: 'x, y' } with flags resolved by `flags`.
-function parseProps(body, flags, where, errors) {
+// The keys and flags in a [props] body, without resolving them.
+const propNames = (body) => splitTop(body, ',').map((p) => p.trim()).filter(Boolean).map((p) => splitTop(p, ':')[0].trim());
+
+// "[a: 1, b: "x, y", flag]" → { a: 1, b: 'x, y' }, flags resolved for `kind`.
+function parseProps(body, kind, where, errors) {
+  const { flags, keys } = KINDS[kind];
   const out = {};
   for (const part of splitTop(body, ',')) {
     const p = part.trim();
@@ -88,27 +154,36 @@ function parseProps(body, flags, where, errors) {
     } else if (flags[p]) {
       const [key, val] = flags[p];
       out[key] = val;
+    } else if (keys[p]) {
+      errors.push(`${where}: "${p}" needs a value, like [${p}: …]`);
     } else {
-      errors.push(`${where}: unknown flag "${p}" (flags here: ${Object.keys(flags).join(', ')})`);
+      const other = Object.entries(KINDS).find(([k, v]) => k !== kind && v.flags[p]);
+      const hint = suggest(p, [...Object.keys(flags), ...Object.keys(keys)]);
+      errors.push(other
+        ? `${where}: "${p}" is a ${other[0]} flag, not a ${kind} flag`
+        : `${where}: unknown ${kind} flag "${p}"${hint ? ` (did you mean "${hint}"?)` : ''}; flags: ${Object.keys(flags).join(', ')}`);
     }
   }
   return out;
 }
 
-// Peel a trailing [props] off a fragment: "Mac [icon: laptop]" → ["Mac", "icon: laptop"].
+// Peel a trailing [props] off a fragment: 'Mac [icon: laptop]' → ['Mac', 'icon: laptop'].
 function peel(s) {
   const t = s.trim();
   if (!t.endsWith(']')) return [t, null];
-  let depth = 0, quote = false;
-  for (let i = t.length - 1; i >= 0; i--) {
+  // The last bracket opened at depth 0 is the one that closes at the end.
+  let open = -1, depth = 0, quote = false;
+  for (let i = 0; i < t.length; i++) {
     const ch = t[i];
-    if (ch === '"' && t[i - 1] !== '\\') quote = !quote;
-    if (quote) continue;
-    if (ch === ']') depth++;
-    if (ch === '[') { depth--; if (depth === 0) return [t.slice(0, i).trim(), t.slice(i + 1, -1)]; }
+    if (quote) { if (ch === '\\') i++; else if (ch === '"') quote = false; continue; }
+    if (ch === '"') quote = true;
+    else if (ch === '[') { if (depth === 0) open = i; depth++; }
+    else if (ch === ']') depth--;
   }
-  return [t, null];
+  return open >= 0 ? [t.slice(0, open).trim(), t.slice(open + 1, -1)] : [t, null];
 }
+
+const MERMAID = /(<-+>|-+>|<-+|<>|=>)|^[<>]|[<>]$/;
 
 export function parseFig(text) {
   const errors = [];
@@ -117,17 +192,57 @@ export function parseFig(text) {
   const stack = [];
   let groupSeq = 0;
 
-  const node = (rawName, props, where) => {
-    const name = unescape(rawName.trim());
-    if (!name) { errors.push(`${where}: empty node name`); return null; }
+  const checkName = (name, where) => {
+    if (!name) { errors.push(`${where}: empty node name`); return false; }
+    return true;
+  };
+
+  // A node, created on first mention. `declare` marks a declaration, which is
+  // what places a node in the group it is written in.
+  const node = (fragment, where, { declare = false, props = null } = {}) => {
+    const [rawName, body] = props === null ? peel(fragment) : [fragment, null];
+    const quoted = rawName.trim().startsWith('"');
+    const name = unquote(rawName);
+    if (!checkName(name, where)) return null;
+    if (!quoted && MERMAID.test(name)) {
+      errors.push(`${where}: "${name}" looks like a link written without spaces; put spaces around the arrow ("A -> B"), or quote the name`);
+      return null;
+    }
+    if (!quoted && /:\s/.test(name)) {
+      errors.push(`${where}: "${name}" is not a node name, a directive, or a link; quote it if it is a name`);
+      return null;
+    }
     let n = nodes.get(name);
+    const created = !n;
     if (!n) {
       n = { id: name };
       nodes.set(name, n);
       spec.nodes.push(n);
     }
-    if (props) Object.assign(n, props);
-    if (stack.length && !n.group) n.group = stack[stack.length - 1].id;
+    const p = props || (body !== null ? parseProps(body, 'node', where, errors) : null);
+    if (p) {
+      checkObject(p, NODE_PROPS, `${where}: node "${name}"`, errors);
+      Object.assign(n, p);
+    }
+    // Group membership: a declaration inside a group places the node there; a
+    // name first mentioned in a link inside a group joins it until a
+    // declaration elsewhere says otherwise.
+    const g = stack[stack.length - 1];
+    if (declare || p) {
+      if (g) {
+        if (n.group && n.group !== g.id && n.groupBy === 'decl') {
+          const other = spec.groups.find((x) => x.id === n.group);
+          errors.push(`${where}: "${name}" is already declared in group "${other.label}" (${n.groupWhere}); a node sits in one group`);
+        } else {
+          Object.assign(n, { group: g.id, groupWhere: where, groupBy: 'decl' });
+        }
+      } else if (n.groupBy === 'ref') {
+        delete n.group;
+        delete n.groupBy;
+      }
+    } else if (g && created) {
+      Object.assign(n, { group: g.id, groupWhere: where, groupBy: 'ref' });
+    }
     return n;
   };
 
@@ -142,67 +257,97 @@ export function parseFig(text) {
       return;
     }
 
-    const directive = line.match(new RegExp(`^(${DIRECTIVES.join('|')})\\s*(?::\\s*|\\s+)(.+)$`));
-    if (directive && !OP_RE.test(` ${line} `)) {
-      const [, key, val] = directive;
-      const v = parseValue(val);
-      spec[key] = key === 'size' && typeof v === 'string' && /^\d+x\d+$/.test(v) ? v.split('x').map(Number) : v;
+    // Directives first: "title: A - B" is a title, not a link.
+    const kv = line.match(/^([A-Za-z][A-Za-z0-9]*)\s*:(?!\/\/)\s*(.*)$/);
+    if (kv) {
+      const key = DIRECTIVES.find((d) => d.toLowerCase() === kv[1].toLowerCase());
+      if (key) { setDirective(key, kv[2], where); return; }
+      const hint = suggest(kv[1], DIRECTIVES);
+      errors.push(hint
+        ? `${where}: unknown directive "${kv[1]}" (did you mean "${hint}"?)`
+        : `${where}: "${kv[1]}:" is not a directive (${DIRECTIVES.join(', ')}); for a node note use ${kv[1]} [note: …]`);
       return;
     }
+    const bare = line.match(/^([A-Za-z]+)\s+(\S+)$/);
+    if (bare && BARE.includes(bare[1]) && !splitOps(line).ops.length) { setDirective(bare[1], bare[2], where); return; }
 
     if (line.endsWith('{')) {
       const [name, body] = peel(line.slice(0, -1));
-      const props = body ? parseProps(body, GROUP_FLAGS, where, errors) : {};
-      const g = { id: `g${++groupSeq}`, label: unescape(name), ...props, nodes: [] };
+      const props = body ? parseProps(body, 'group', where, errors) : {};
+      checkObject(props, GROUP_PROPS, `${where}: group "${unquote(name)}"`, errors);
+      const g = { id: `g${++groupSeq}`, label: unquote(name), ...props, nodes: [] };
       if (stack.length) g.parent = stack[stack.length - 1].id;
       spec.groups.push(g);
       stack.push(g);
       return;
     }
 
-    if (OP_RE.test(` ${line} `)) {
-      // Label and link props hang off the end: "A > B: label [dashed]".
-      let [head, ...labelParts] = splitTop(line, ': ');
-      let label = labelParts.join(': ');
-      let linkProps = {};
-      const [rest, body] = peel(label || head);
-      if (body !== null) {
-        linkProps = parseProps(body, LINK_FLAGS, where, errors);
-        if (label) label = rest; else head = rest;
-      }
-      const parts = (` ${head} `).split(OP_RE);
-      // parts: [ends, op, ends, op, ends ...]
-      for (let i = 1; i < parts.length - 1; i += 2) {
-        const op = OPERATORS.find(([o]) => o === parts[i]);
-        const froms = splitTop(parts[i - 1], ',').map((s) => s.trim()).filter(Boolean);
-        const tos = splitTop(parts[i + 1], ',').map((s) => s.trim()).filter(Boolean);
-        const declare = (frag) => {
-          const [nm, b] = peel(frag);
-          return node(nm, b ? parseProps(b, NODE_FLAGS, where, errors) : null, where);
-        };
-        for (const f of froms) for (const to of tos) {
-          const a = declare(f), b = declare(to);
-          if (!a || !b) continue;
-          const lk = { from: a.id, to: b.id, dir: op[1] };
-          if (op[2]) lk.style = op[2];
-          if (label && i === parts.length - 2) lk.label = unescape(parseValue(label).toString());
-          spec.links.push({ ...lk, ...linkProps });
-        }
-        // "A > B > C": the right side of one hop is the left side of the next.
-        parts[i + 1] = tos.map((s) => peel(s)[0]).join(', ');
-      }
-      return;
-    }
+    const [headRaw, ...labelParts] = splitTop(line, ': ');
+    const ops = splitOps(headRaw);
+    if (ops.ops.length) { link(headRaw, labelParts.join(': '), ops, where); return; }
 
-    const [name, body] = peel(line);
-    node(name, body ? parseProps(body, NODE_FLAGS, where, errors) : null, where);
+    node(line, where, { declare: true });
   });
 
+  function setDirective(key, val, where) {
+    const v = parseValue(val);
+    if (val.trim() === '') { errors.push(`${where}: "${key}" needs a value`); return; }
+    spec[key] = key === 'size' && typeof v === 'string' && /^\d+x\d+$/.test(v) ? v.split('x').map(Number) : v;
+  }
+
+  // "A > B, C: label [props]". The props may sit after the label or, with no
+  // label, at the end of the line; a trailing bracket whose keys are all node
+  // keys belongs to the last endpoint instead.
+  function link(headRaw, labelRaw, first, where) {
+    let head = headRaw, label = labelRaw.trim(), linkProps = {};
+    if (label) {
+      const [rest, body] = peel(label);
+      if (body !== null) { linkProps = parseProps(body, 'link', where, errors); label = rest; }
+    }
+    let ops = first;
+    const [, lastBody] = peel(ops.parts[ops.parts.length - 1]);
+    if (lastBody !== null) {
+      const names = propNames(lastBody);
+      const isLink = (k) => k in LINK_PROPS || k in LINK_FLAGS;
+      const isNode = (k) => k in NODE_PROPS || k in NODE_FLAGS;
+      if (!names.every(isLink) && names.every(isNode)) {
+        // Node props on the last endpoint: leave them in place.
+      } else {
+        linkProps = { ...parseProps(lastBody, 'link', where, errors), ...linkProps };
+        head = head.slice(0, head.lastIndexOf('[')).trimEnd();
+        ops = splitOps(head);
+      }
+    }
+    checkObject(linkProps, LINK_PROPS, `${where}: link`, errors);
+    if (ops.dangling) { errors.push(`${where}: a link is missing a node on one side of its arrow`); return; }
+    for (let i = 0; i < ops.ops.length; i++) {
+      const op = ops.ops[i];
+      const froms = splitTop(ops.parts[i], ',').map((s) => s.trim()).filter(Boolean);
+      const tos = splitTop(ops.parts[i + 1], ',').map((s) => s.trim()).filter(Boolean);
+      const ends = (list) => list.map((frag) => {
+        const [, body] = peel(frag);
+        return node(frag, where, { declare: body !== null });
+      });
+      const A = ends(froms), B = ends(tos);
+      for (const a of A) for (const b of B) {
+        if (!a || !b) continue;
+        if (a === b) { errors.push(`${where}: "${a.id}" links to itself, which can't be drawn`); continue; }
+        const lk = { from: a.id, to: b.id, dir: op[1] };
+        if (op[2]) lk.style = op[2];
+        if (label && i === ops.ops.length - 1) lk.label = unquote(label);
+        spec.links.push({ ...lk, ...linkProps });
+      }
+      // "A > B > C": the right side of one hop is the left side of the next.
+      ops.parts[i + 1] = tos.map((s) => peel(s)[0]).join(', ');
+    }
+  }
+
   if (stack.length) errors.push(`end of file: ${stack.length} group(s) left open ("${stack.map((g) => g.label).join('", "')}")`);
+  if (!spec.nodes.length && !errors.length) errors.push('the file declares no nodes');
   if (errors.length) throw new FigureSpecError(errors);
 
   for (const g of spec.groups) g.nodes = spec.nodes.filter((n) => n.group === g.id).map((n) => n.id);
-  for (const n of spec.nodes) delete n.group;
+  for (const n of spec.nodes) { delete n.group; delete n.groupWhere; delete n.groupBy; }
   if (!spec.groups.length) delete spec.groups;
   return spec;
 }

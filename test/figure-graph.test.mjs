@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, stat, writeFile } from 'node:fs/promises';
+import sharp from 'sharp';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -34,12 +35,12 @@ test('fig: chains, fan-out, labels and link props', () => {
 test('fig: names with dashes, node props, flags, quoted strings and comments', () => {
   const s = parseFig([
     '# a comment',
-    'homelab-server [icon: server, note: "Docker, NPM", anchor]  // trailing',
+    'app-server [icon: server, note: "API, workers", anchor]  // trailing',
     'n1 [label: "two\\nlines", at: [1, 2], scale: 1.2, box]',
-    'homelab-server > n1',
+    'app-server > n1',
   ].join('\n'));
   const [a, b] = s.nodes;
-  assert.deepEqual(a, { id: 'homelab-server', icon: 'server', note: 'Docker, NPM', role: 'anchor' });
+  assert.deepEqual(a, { id: 'app-server', icon: 'server', note: 'API, workers', role: 'anchor' });
   assert.deepEqual(b, { id: 'n1', label: 'two\nlines', at: [1, 2], scale: 1.2, shape: 'box' });
   assert.equal(s.links[0].to, 'n1');
 });
@@ -62,7 +63,7 @@ test('fig: directives, inline declarations and nested groups', () => {
 });
 
 test('fig: errors carry line numbers', () => {
-  assert.throws(() => parseFig('a\nb [sparkly]'), (e) => e instanceof FigureSpecError && /line 2: unknown flag "sparkly"/.test(e.message));
+  assert.throws(() => parseFig('a\nb [sparkly]'), (e) => e instanceof FigureSpecError && /line 2: unknown node flag "sparkly"/.test(e.message));
   assert.throws(() => parseFig('G {\n a'), /1 group\(s\) left open \("G"\)/);
   assert.throws(() => parseFig('a\n}'), /line 2: "}" with no open group/);
 });
@@ -92,7 +93,8 @@ test('normalize cross-checks ids and folds legacy keys', () => {
   assert.ok(G.byId.get('hub').isCenter);
   assert.deepEqual([G.links[0].from, G.links[0].to, G.links[0].dir, G.links[0].toLabel], ['hub', 'a', 'to', 'x']);
   assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a', pos: 'center' }] }).opts.layout, 'star');
-  assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }] }).opts.layout, 'auto');
+  assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }] }).opts.layout, 'row');
+  assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }], links: [] }).opts.layout, 'auto');
   const row = normalize({ template: 'topology', layout: 'row', nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
   assert.deepEqual(row.links.map((l) => `${l.from}${l.to}`), ['ab', 'bc']);
 });
@@ -175,7 +177,7 @@ test('ELK: grouped graph lays out with no overlapping nodes or labels', async ()
     nodes: ['mac', 'op', 'srv', 'pid', 'pt', 'vps'].map((id) => ({ id })),
     links: [{ from: 'mac', to: 'op', label: 'ssh' }, { from: 'op', to: 'srv', label: 'tokens' }, { from: 'op', to: 'vps' },
       { from: 'srv', to: 'pid' }, { from: 'srv', to: 'pt' }],
-    groups: [{ id: 'lab', label: 'Homelab', nodes: ['srv', 'pid', 'pt'] }],
+    groups: [{ id: 'lab', label: 'Private network', nodes: ['srv', 'pid', 'pt'] }],
   }, 220, 72);
   await layoutElk(G, { top: 80, side: 34 });
   const boxes = G.nodes.flatMap((n) => [[`${n.id}`, nodeRect(n)], [`${n.id} label`, n.labelRect]]);
@@ -201,7 +203,7 @@ test('renders .fig and JSON graphs, reports warnings, --strict fails on them', a
     await writeFile(fig, 'title: Flow\nA [icon: laptop] > B [box, icon: cloud]: hop\nG { C [muted] }\nB --> C');
     const res = await makeFigure({ specPath: fig, browser, quiet: true });
     assert.equal(res.outPath, path.join(dir, 'flow.png'));
-    assert.equal(res.width, 3200);
+    assert.ok(res.width >= 2200 && res.width <= 3200, `content-sized width ${res.width}`);
     assert.deepEqual(res.warnings, []);
 
     const dark = await makeFigure({ spec: { template: 'diagram', theme: 'dark', size: 'og', nodes: [{ id: 'a' }, { id: 'b' }], links: [{ from: 'a', to: 'b' }] }, browser, quiet: true });
@@ -212,5 +214,132 @@ test('renders .fig and JSON graphs, reports warnings, --strict fails on them', a
     const warned = await makeFigure({ spec: clash, browser, quiet: true });
     assert.ok(warned.warnings.some((w) => /overlap/.test(w)), warned.warnings.join('; '));
     await assert.rejects(() => makeFigure({ spec: clash, browser, quiet: true, strict: true }), /with --strict/);
+  } finally { await browser.close(); }
+});
+
+// --- review fixes -------------------------------------------------------------
+
+const figErr = (text, re) => assert.throws(() => parseFig(text), (e) => e instanceof FigureSpecError && re.test(e.message), `expected ${re}`);
+
+test('fig: directives win over arrows in their value, any case', () => {
+  assert.equal(parseFig('title: Prod - staging\nA').title, 'Prod - staging');
+  assert.equal(parseFig('title: Mac > Cloud\nA').title, 'Mac > Cloud');
+  assert.equal(parseFig('Title: Hello\nA').title, 'Hello');
+});
+
+test('fig: lines that are not nodes fail with a suggestion instead of becoming nodes', () => {
+  figErr('layot: auto\nA', /line 1: unknown directive "layot" \(did you mean "layout"\?\)/);
+  figErr('Redis: cache', /"Redis:" is not a directive/);
+  figErr('A->B', /line 1: "A->B" looks like a link written without spaces/);
+  figErr('A >', /line 1: a link is missing a node/);
+  figErr('> B', /a link is missing a node/);
+  figErr('NAS > NAS', /"NAS" links to itself/);
+  figErr('# only a comment', /declares no nodes/);
+});
+
+test('fig: every problem in one round, flag typos with suggestions', () => {
+  assert.throws(() => parseFig('A [anchr, icon: sever]\nB [dashed]\nA > B [dashd]'), (e) => {
+    const m = e.message;
+    return /line 1: unknown node flag "anchr" \(did you mean "anchor"\?\)/.test(m)
+      && /line 1: node "A".icon: .*did you mean "server"/.test(m)
+      && /line 2: "dashed" is a link flag, not a node flag/.test(m)
+      && /line 3: unknown link flag "dashd" \(did you mean "dashed"\?\)/.test(m)
+      && e.errors.length === 4;
+  });
+});
+
+test('fig: group membership comes from declarations', () => {
+  const ref = parseFig('Cloud {\n  api > db\n}');
+  assert.deepEqual(ref.groups[0].nodes, ['api', 'db']);
+  const moved = parseFig('G {\n  A > Outside\n}\nOutside [icon: cloud]');
+  assert.deepEqual(moved.groups[0].nodes, ['A']);
+  const later = parseFig('A [icon: cloud]\nG {\n  A\n}');
+  assert.deepEqual(later.groups[0].nodes, ['A']);
+  figErr('G {\n A\n}\nH {\n A\n}', /line 5: "A" is already declared in group "G" \(line 2\)/);
+});
+
+test('fig: comments only at a line start or after a space; quoted names keep operators', () => {
+  assert.deepEqual(parseFig('C# > F#').links.map((l) => [l.from, l.to]), [['C#', 'F#']]);
+  assert.deepEqual(parseFig('http://x > D # note').links.map((l) => [l.from, l.to]), [['http://x', 'D']]);
+  const q = parseFig('"A > B" [icon: server]\n"A > B" > "C, D": hop');
+  assert.deepEqual(q.nodes, [{ id: 'A > B', icon: 'server' }, { id: 'C, D' }]);
+  assert.equal(q.links[0].label, 'hop');
+});
+
+test('fig: link props before or after the label; node props on the last endpoint', () => {
+  const a = parseFig('A > B [dashed]: x').links[0];
+  assert.deepEqual([a.label, a.style], ['x', 'dashed']);
+  const b = parseFig('A > B [icon: server]');
+  assert.equal(b.nodes[1].icon, 'server');
+  assert.equal(b.links[0].icon, undefined);
+});
+
+test('normalize: self-links and empty groups are noted, not silently dropped', () => {
+  const G = normalize({ template: 'topology', nodes: [{ id: 'a' }, { id: 'b' }], links: [{ from: 'a', to: 'a' }],
+    groups: [{ id: 'e', label: 'Empty', nodes: [] }, { id: 'f', label: 'Full', nodes: ['b'] }] });
+  assert.equal(G.links.length, 0);
+  assert.deepEqual(G.groups.map((g) => g.id), ['f']);
+  assert.ok(G.notes.some((n) => /joins a node to itself/.test(n)));
+  assert.ok(G.notes.some((n) => /group "Empty" has no nodes/.test(n)));
+  assert.throws(() => normalize({ template: 'topology', nodes: [] }), /needs at least one node/);
+});
+
+test('normalize: legacy nodeScale fraction only for fixed topology layouts', () => {
+  assert.equal(normalize({ template: 'topology', layout: 'star', nodeScale: 0.16, nodes: [{ id: 'a' }] }).opts.nodeScale, 1);
+  assert.equal(normalize({ template: 'diagram', layout: 'star', nodeScale: 0.45, nodes: [{ id: 'a' }] }).opts.nodeScale, 0.45);
+  assert.equal(normalize({ template: 'topology', nodeScale: 0.45, nodes: [{ id: 'a' }], links: [] }).opts.nodeScale, 0.45);
+  assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }], links: [] }).opts.routing, 'orthogonal');
+});
+
+test('ELK: orthogonal by default, ends square to the rim', async () => {
+  const G = prepared({ template: 'topology', nodes: ['a', 'b', 'c', 'd'].map((id) => ({ id })),
+    links: [{ from: 'a', to: 'b' }, { from: 'a', to: 'c' }, { from: 'a', to: 'd' }, { from: 'b', to: 'd' }] });
+  await layoutElk(G, { top: 80, side: 34 });
+  for (const l of G.links) {
+    l.pts.forEach((p, i) => {
+      if (!i) return;
+      const q = l.pts[i - 1];
+      assert.ok(Math.abs(p.x - q.x) < 0.5 || Math.abs(p.y - q.y) < 0.5, `${l.id} segment ${i} is axis-aligned`);
+    });
+    const a = G.byId.get(l.from), b = G.byId.get(l.to);
+    assert.ok(Math.abs(Math.hypot(l.pts[0].x - a.x, l.pts[0].y - a.y) - (a.d / 2 + 9)) < 1, `${l.id} leaves at the rim`);
+    const e = l.pts[l.pts.length - 1];
+    assert.ok(Math.abs(Math.hypot(e.x - b.x, e.y - b.y) - (b.d / 2 + 9)) < 1, `${l.id} arrives at the rim`);
+  }
+});
+
+test('star: a hub with all eight spokes gets a badge label instead of a warning', () => {
+  const spokes = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+  const G = prepared({ template: 'topology', layout: 'star', nodes: [{ id: 'hub', role: 'anchor' }, ...spokes.map((id) => ({ id }))],
+    links: spokes.map((id) => ({ from: 'hub', to: id, label: id })) }, 120, 40);
+  layoutGeo(G);
+  placeChips(G);
+  placeLabels(G);
+  const hub = G.byId.get('hub');
+  assert.ok(hub.labelBadge, 'hub label is badged');
+  for (const l of G.links) assert.equal(overlapArea(hub.labelRect, l.chipRect), 0, `hub label clear of chip ${l.label}`);
+});
+
+test('renders: wrapped chains read at full size, dark anchors stay visible, --strict writes nothing', async (t) => {
+  let browser;
+  try { browser = await launchBrowser(); } catch { return t.skip('Playwright not installed'); }
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'figure-review-'));
+  try {
+    const steps = ['Commit', 'Lint', 'Test', 'Build', 'Sign', 'Scan', 'Stage', 'Approve', 'Deploy', 'Verify'];
+    const chain = parseFig(`title: Release\n${steps.join(' > ')}`);
+    const res = await makeFigure({ spec: chain, browser, quiet: true, strict: true });
+    assert.deepEqual(res.warnings, []);
+
+    const darkSpec = { template: 'diagram', theme: 'dark', nodes: [{ id: 'a', role: 'anchor' }, { id: 'b' }], links: [{ from: 'a', to: 'b', color: 'accent' }] };
+    const { buffer } = await makeFigure({ spec: darkSpec, browser, quiet: true });
+    const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+    let bright = 0;
+    for (let i = 0; i < data.length; i += info.channels) if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) bright++;
+    assert.ok(bright > 2000, 'paper ring and glyph show on the dark page');
+
+    const out = path.join(dir, 'clash.png');
+    const clash = { template: 'topology', layout: 'free', nodes: [{ id: 'a', at: [0.5, 0.5], labelPos: 'below' }, { id: 'b', at: [0.5, 0.5], labelPos: 'below' }] };
+    await assert.rejects(() => makeFigure({ spec: clash, out, browser, quiet: true, strict: true }), /nothing written/);
+    await assert.rejects(() => stat(out), /ENOENT/);
   } finally { await browser.close(); }
 });

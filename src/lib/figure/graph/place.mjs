@@ -94,6 +94,24 @@ export function placeLabels(G) {
       for (const pr of placed) { const a = overlapArea(probe, pr); if (a) cost += 800 + a; }
       if (!best || cost < best.cost) best = { cost, r, align };
     }
+    // No spot clears every line (a crowded hub): drop the line penalty, take the
+    // spot that clears nodes, chips and labels, and give the label a chip
+    // background so it reads over the line beneath it.
+    if (best.cost >= 1000 && !n.labelPos) {
+      let alt;
+      for (const [name, dirAngle, pref] of CANDIDATES) {
+        const { r, align } = labelRectAt(n, name);
+        const probe = inflate(r, 8);
+        let cost = pref;
+        if (angles.length) cost += ((Math.PI - Math.min(...angles.map((a) => angleGap(a, dirAngle)))) / Math.PI) * 8;
+        for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) cost += 20;
+        for (const [id, nr] of nodeRects) { if (id === n.id) continue; const a = overlapArea(probe, nr); if (a) cost += 800 + a; }
+        for (const cr of chips) { const a = overlapArea(probe, cr); if (a) cost += 800 + a; }
+        for (const pr of placed) { const a = overlapArea(probe, pr); if (a) cost += 800 + a; }
+        if (!alt || cost < alt.cost) alt = { cost, r, align };
+      }
+      if (alt.cost < 800) { best = alt; n.labelBadge = true; }
+    }
     n.labelRect = best.r;
     n.labelAlign = best.align;
     placed.push(best.r);

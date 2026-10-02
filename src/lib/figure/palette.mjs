@@ -57,6 +57,16 @@ export function palette(theme, tokens) {
     subline: dark ? mix(t.paper, t.accent, 62) : mix(t.ink, t.paper, 42),
     rule: dark ? mix(t.accent, t.paper, 45) : t.accent,
     muted: dark ? mix(t.paper, t.accent, 45) : mix(t.ink, t.paper, 55),
+    // Named colors as strokes and text: on a dark page the brand accent and deep
+    // lift toward paper so an accent link or ring stays visible.
+    tone: {
+      accent: dark ? mix(t.paper, t.accent, 78) : t.accent,
+      deep: dark ? mix(t.paper, t.accent, 58) : t.deep,
+      ink: dark ? t.paper : t.ink,
+      muted: dark ? mix(t.paper, t.accent, 45) : mix(t.ink, t.paper, 55),
+    },
+    // Named colors as fills: the raw brand values in either theme.
+    fills: { accent: t.accent, deep: t.deep, ink: t.ink, muted: dark ? mix(t.paper, t.accent, 45) : mix(t.ink, t.paper, 55) },
     chipBg: t.paper,
     chipText: t.ink,
     groupFill: dark ? rgba(t.paper, 0.05) : rgba(t.accent, 0.035),

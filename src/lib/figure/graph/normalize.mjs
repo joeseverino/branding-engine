@@ -3,19 +3,26 @@
 import { checkObject, FigureSpecError, GROUP, LINK, NODE, suggest } from '../schema.mjs';
 
 // The layout a spec gets: explicit, else star when nodes carry compass `pos`,
-// free when they carry `at`, else automatic.
+// free when they carry `at`, a chained row when the spec has no `links` at all
+// (the original topology default), else automatic.
 export function graphLayout(spec) {
   const nodes = spec.nodes || [];
   if (spec.layout) return spec.layout;
   if (spec.center || nodes.some((n) => n && n.pos)) return 'star';
   if (nodes.some((n) => n && n.at)) return 'free';
+  if (spec.links === undefined) return 'row';
   return 'auto';
 }
+
+// Fixed layouts in `topology` specs read a nodeScale under 0.5 the old way, as
+// a fraction of the canvas where 0.16 was the default size.
+const LEGACY_SCALE = ['star', 'ring', 'row', 'free'];
 
 export const isRadial = (layout) => layout === 'star' || layout === 'ring';
 
 export function normalize(spec) {
   const errors = [];
+  const notes = [];
   const raw = [...(spec.nodes || [])];
   // Legacy `center` (ring layout): a node that sits in the middle.
   if (spec.center) raw.push({ ...spec.center, pos: 'center' });
@@ -50,6 +57,7 @@ export function normalize(spec) {
     nodes.push(node);
     byId.set(node.id, node);
   });
+  if (!nodes.length && !errors.length) errors.push('spec.nodes: a graph needs at least one node');
   const ids = [...byId.keys()];
   const known = (id, where) => {
     if (byId.has(id)) return true;
@@ -69,7 +77,8 @@ export function normalize(spec) {
     if (!l || typeof l !== 'object') return;
     if (typeof l.from !== 'string' || typeof l.to !== 'string') { errors.push(`${where}: needs "from" and "to"`); return; }
     if (!known(l.from, `${where}.from`) | !known(l.to, `${where}.to`)) return;
-    let link = { id: `e${i}`, from: l.from, to: l.to, label: l.label, fromLabel: l.fromLabel, toLabel: l.toLabel,
+    if (l.from === l.to) { notes.push(`link ${l.from} → ${l.to} joins a node to itself and is not drawn`); return; }
+    let link = { id: `e${i}`, index: i, from: l.from, to: l.to, label: l.label, fromLabel: l.fromLabel, toLabel: l.toLabel,
       dir: l.dir || 'both', style: l.style || 'solid', color: l.color, width: l.width, curve: l.curve };
     // `from` arrows point back at the source; store every link as source → target.
     if (link.dir === 'from') link = { ...link, from: link.to, to: link.from, dir: 'to', fromLabel: link.toLabel, toLabel: link.fromLabel };
@@ -124,17 +133,28 @@ export function normalize(spec) {
   if (errors.length) throw new FigureSpecError(errors);
   for (const n of nodes) delete n.groupAssigned;
 
+  // A group with nothing in it (directly or through its children) isn't drawn.
+  const hasContent = (g) => g.nodes.length > 0 || groups.some((k) => k.parent === g.id && hasContent(k));
+  const drawn = groups.filter((g) => {
+    if (hasContent(g)) return true;
+    notes.push(`group "${g.label || g.id}" has no nodes and is not drawn`);
+    return false;
+  });
+
+  const legacy = spec.template === 'topology' && LEGACY_SCALE.includes(layout) && spec.nodeScale < 0.5;
+
   return {
-    nodes, links, groups, byId,
+    nodes, links, groups: drawn, byId, notes,
     opts: {
       layout,
       direction: spec.direction || 'right',
-      routing: spec.routing || 'straight',
+      directionSet: Boolean(spec.direction),
+      routing: spec.routing || 'orthogonal',
       title: spec.title,
       subtitle: spec.subtitle,
       size: spec.size,
       fit: spec.fit !== false,
-      nodeScale: spec.nodeScale ? (spec.nodeScale < 0.5 ? spec.nodeScale / 0.16 : spec.nodeScale) : 1,
+      nodeScale: spec.nodeScale ? (legacy ? spec.nodeScale / 0.16 : spec.nodeScale) : 1,
       textScale: spec.textScale || 1,
       spread: spec.spread || 1,
     },

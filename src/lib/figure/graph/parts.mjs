@@ -19,9 +19,17 @@ export const METRICS = {
   boxTextMaxW: 300,
 };
 
+// A named color (accent, deep, ink, muted) or a hex, as a stroke or text color:
+// theme-aware, so it reads on a dark page.
 export function colorOf(name, c, fallback) {
   if (!name) return fallback;
-  return { accent: c.accent, deep: c.deep, ink: c.ink, muted: c.muted }[name] || name;
+  return c.tone[name] || name;
+}
+
+// The same, as a fill: the raw brand value, which white text sits on.
+export function fillOf(name, c, fallback) {
+  if (!name) return fallback;
+  return c.fills[name] || name;
 }
 
 export function nodeLabelHtml(node, c, ts, align = 'center') {
@@ -35,7 +43,7 @@ export function nodeLabelHtml(node, c, ts, align = 'center') {
 // A box node is its own label: rounded rect, optional glyph, text inside.
 export function boxStyle(node, c) {
   const filled = node.role === 'anchor' || node.role === 'attacker';
-  const tint = colorOf(node.color, c, c.accent);
+  const tint = fillOf(node.color, c, c.accent);
   const muted = node.role === 'muted';
   return {
     filled,
@@ -61,9 +69,10 @@ export function boxInnerHtml(node, c, ts) {
 
 export function chipHtml(link, c, ts) {
   const accent = link.color === 'accent';
-  return `<div style="background:${c.chipBg};color:${accent ? c.accent : c.chipText};font-size:${26 * ts}px;` +
+  const ink = c.accent; // chips are light in both themes, so the raw accent reads
+  return `<div style="background:${c.chipBg};color:${accent ? ink : c.chipText};font-size:${26 * ts}px;` +
     `font-weight:${accent ? 700 : 600};line-height:1.2;text-align:center;white-space:nowrap;padding:${6 * ts}px ${14 * ts}px;` +
-    `border-radius:${9 * ts}px;box-shadow:${c.nodeShadow};border:1.5px solid ${accent ? c.accent : 'transparent'}">${ml(link.label)}</div>`;
+    `border-radius:${9 * ts}px;box-shadow:${c.nodeShadow};border:1.5px solid ${accent ? ink : 'transparent'}">${ml(link.label)}</div>`;
 }
 
 export function endLabelHtml(text, c, ts) {

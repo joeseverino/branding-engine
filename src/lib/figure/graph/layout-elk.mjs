@@ -6,6 +6,28 @@ import { rect, rimPoint } from '../geom.mjs';
 import { METRICS } from './parts.mjs';
 
 const DIRS = { right: 'RIGHT', down: 'DOWN', left: 'LEFT', up: 'UP' };
+const ROUTING = { orthogonal: 'ORTHOGONAL', straight: 'POLYLINE', curved: 'SPLINES' };
+// Which side links enter and leave by, per direction.
+const SIDES = { right: ['WEST', 'EAST'], left: ['EAST', 'WEST'], down: ['NORTH', 'SOUTH'], up: ['SOUTH', 'NORTH'] };
+
+// A 1×1 port at the middle of one side of a w×h node, inside the border: ELK
+// attaches a link at the port's outer edge, which then lies on the side.
+function port(id, side, w, h) {
+  const at = { WEST: [0, h / 2 - 0.5], EAST: [w - 1, h / 2 - 0.5], NORTH: [w / 2 - 0.5, 0], SOUTH: [w / 2 - 0.5, h - 1] }[side];
+  return { id, width: 1, height: 1, x: at[0], y: at[1], layoutOptions: { 'elk.port.side': side } };
+}
+
+// An orthogonal end: on the segment's axis through the node center, `gap`
+// past the rim, facing the next point. Ports sit at side midpoints, so the
+// segment already runs through the center line.
+function rimAlong(n, next, gap) {
+  const dx = next.x - n.x, dy = next.y - n.y;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const half = n.shape === 'box' ? (horizontal ? n.w / 2 : n.h / 2) : n.d / 2;
+  return horizontal
+    ? { x: n.x + Math.sign(dx) * (half + gap), y: n.y }
+    : { x: n.x, y: n.y + Math.sign(dy) * (half + gap) };
+}
 
 // Where a ray from p toward q first meets a circle node (plus `gap`): the rim
 // point that faces p.
@@ -21,19 +43,27 @@ function circleEntry(n, p, q, gap) {
   return { x: p.x + dx * t, y: p.y + dy * t };
 }
 
-export async function layoutElk(G, groupPad) {
-  const vertical = G.opts.direction === 'down' || G.opts.direction === 'up';
-  const routing = G.opts.routing === 'orthogonal' ? 'ORTHOGONAL' : 'POLYLINE';
+export async function layoutElk(G, groupPad, direction = G.opts.direction, { wrap = false } = {}) {
+  const vertical = direction === 'down' || direction === 'up';
+  const routing = ROUTING[G.opts.routing] || 'ORTHOGONAL';
+  const ported = routing === 'ORTHOGONAL';
+  const [inSide, outSide] = SIDES[direction] || SIDES.right;
   const elkNode = (n) => {
-    const out = { id: n.id };
-    if (n.shape === 'box') Object.assign(out, { width: n.w, height: n.h });
-    else {
-      Object.assign(out, { width: n.d, height: n.d });
+    const out = { id: n.id, layoutOptions: {} };
+    const [w, h] = n.shape === 'box' ? [n.w, n.h] : [n.d, n.d];
+    Object.assign(out, { width: w, height: h });
+    if (n.shape === 'circle') {
       out.labels = [{ text: n.id, width: n.labelSize.w, height: n.labelSize.h }];
-      out.layoutOptions = {
+      Object.assign(out.layoutOptions, {
         'elk.nodeLabels.placement': vertical ? 'OUTSIDE H_RIGHT V_CENTER' : 'OUTSIDE V_BOTTOM H_CENTER',
-        'elk.spacing.labelNode': String(METRICS.labelGap),
-      };
+        'elk.spacing.labelNode': String(METRICS.labelGap + 6),
+      });
+    }
+    if (ported) {
+      // Every link enters and leaves through the middle of a side, so lines meet
+      // a circle square-on and fan out from one trunk.
+      out.ports = [port(`${n.id}\u241Fin`, inSide, w, h), port(`${n.id}\u241Fout`, outSide, w, h)];
+      out.layoutOptions['elk.portConstraints'] = 'FIXED_POS';
     }
     return out;
   };
@@ -58,7 +88,9 @@ export async function layoutElk(G, groupPad) {
 
   for (const l of G.links) {
     if (l.from === l.to) continue;
-    const e = { id: l.id, sources: [l.from], targets: [l.to] };
+    const e = ported
+      ? { id: l.id, sources: [`${l.from}\u241Fout`], targets: [`${l.to}\u241Fin`] }
+      : { id: l.id, sources: [l.from], targets: [l.to] };
     if (l.label && l.chipSize) {
       e.labels = [{ text: l.id, width: l.chipSize.w, height: l.chipSize.h,
         layoutOptions: { 'elk.edgeLabels.inline': 'true', 'elk.edgeLabels.placement': 'CENTER' } }];
@@ -80,7 +112,7 @@ export async function layoutElk(G, groupPad) {
   root.layoutOptions = {
     ...spacing,
     'elk.algorithm': 'layered',
-    'elk.direction': DIRS[G.opts.direction] || 'RIGHT',
+    'elk.direction': DIRS[direction] || 'RIGHT',
     'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
     'elk.edgeRouting': routing,
     'elk.randomSeed': '1',
@@ -90,6 +122,10 @@ export async function layoutElk(G, groupPad) {
     'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
     'elk.layered.thoroughness': '20',
   };
+  if (wrap) {
+    // Break a long run into rows that keep reading left to right.
+    Object.assign(root.layoutOptions, { 'elk.layered.wrapping.strategy': 'SINGLE_EDGE', 'elk.aspectRatio': '1.5' });
+  }
 
   const out = await new ELK().layout(root);
 
@@ -112,7 +148,11 @@ export async function layoutElk(G, groupPad) {
     n.y = p.y + en.height / 2;
     if (n.shape === 'circle') {
       const lb = en.labels[0];
-      n.labelRect = rect(p.x + lb.x, p.y + lb.y, n.labelSize.w, n.labelSize.h);
+      // ELK can seat an outside label flush against the node; hold the gap.
+      const gap = METRICS.labelGap + 4;
+      const lx = vertical ? Math.max(lb.x, en.width + gap) : lb.x;
+      const ly = vertical ? lb.y : Math.max(lb.y, en.height + gap);
+      n.labelRect = rect(p.x + lx, p.y + ly, n.labelSize.w, n.labelSize.h);
       n.labelAlign = vertical ? 'left' : 'center';
     }
   }
@@ -133,15 +173,22 @@ export async function layoutElk(G, groupPad) {
     const o = abs.get(e.container || 'root') || { x: 0, y: 0 };
     const s = e.sections[0];
     const raw = [s.startPoint, ...(s.bendPoints || []), s.endPoint].map((p) => ({ x: p.x + o.x, y: p.y + o.y }));
-    // ELK's ports sit on the node's side, clear of its outside label; keep its
-    // first and last segments and pull each end onto the circle rim.
     const pts = raw;
     const n = pts.length;
-    if (a.shape === 'circle') pts[0] = circleEntry(a, pts[1], pts[0], 9) || rimPoint(a, pts[1]);
-    if (b.shape === 'circle') pts[n - 1] = circleEntry(b, pts[n - 2], pts[n - 1], 9) || rimPoint(b, pts[n - 2]);
+    if (ported) {
+      // Ports sit on the rim at a side's midpoint: pull each end back off it.
+      pts[0] = rimAlong(a, pts[1], 9);
+      pts[n - 1] = rimAlong(b, pts[n - 2], 9);
+    } else {
+      // Free ports land on the bounding square; re-aim each end at the rim.
+      if (a.shape === 'circle') pts[0] = circleEntry(a, pts[1], pts[0], 9) || rimPoint(a, pts[1]);
+      else pts[0] = rimPoint(a, pts[1]);
+      if (b.shape === 'circle') pts[n - 1] = circleEntry(b, pts[n - 2], pts[n - 1], 9) || rimPoint(b, pts[n - 2]);
+      else pts[n - 1] = rimPoint(b, pts[n - 2]);
+    }
     l.pts = pts;
-    l.smooth = routing === 'POLYLINE' && G.opts.routing === 'curved';
-    l.rounded = true;
+    l.smooth = routing === 'SPLINES';
+    l.rounded = ported;
     if (e.labels?.length && l.chipSize) {
       const lb = e.labels[0];
       l.chipRect = rect(lb.x + o.x, lb.y + o.y, l.chipSize.w, l.chipSize.h);

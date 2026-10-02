@@ -3,7 +3,7 @@
 // scales into the canvas.
 import { pictogramGlyphSvg } from '../../pictogram.mjs';
 import { union } from '../geom.mjs';
-import { boxInnerHtml, boxStyle, chipHtml, colorOf, endLabelHtml, groupLabelHtml, nodeLabelHtml, titleHtml } from './parts.mjs';
+import { boxInnerHtml, boxStyle, chipHtml, colorOf, endLabelHtml, fillOf, groupLabelHtml, nodeLabelHtml, titleHtml } from './parts.mjs';
 
 const f = (v) => Math.round(v * 100) / 100;
 const at = (r) => `position:absolute;left:${f(r.x)}px;top:${f(r.y)}px;width:${f(r.w)}px;height:${f(r.h)}px`;
@@ -48,11 +48,13 @@ function linkSvg(l, c) {
 function circleNode(n, c) {
   const filled = n.role === 'anchor' || n.role === 'attacker';
   const muted = n.role === 'muted';
-  const tint = colorOf(n.color, c, c.accent);
-  const fill = filled ? tint : c.paper;
-  const border = filled ? `3px solid ${n.color ? tint : c.deep}`
-    : muted ? `3px dashed ${c.muted}` : `3px solid ${c.dark && !n.color ? c.paper : tint}`;
-  const glyph = filled ? c.onAccent : muted ? c.muted : (c.dark && !n.color ? c.deep : tint);
+  const fillTint = fillOf(n.color, c, c.accent);
+  const ring = colorOf(n.color, c, c.dark ? c.paper : c.accent);
+  const fill = filled ? fillTint : c.paper;
+  // A filled node on a dark page wears a paper ring so it doesn't sink into it.
+  const border = filled ? `3px solid ${c.dark ? c.paper : (n.color ? fillTint : c.deep)}`
+    : muted ? `3px dashed ${c.muted}` : `3px solid ${ring}`;
+  const glyph = filled ? c.onAccent : muted ? c.muted : (c.dark && !n.color ? c.deep : fillTint);
   return `<div class="fig-topo-node" style="left:${f(n.x)}px;top:${f(n.y)}px;width:${n.d}px;height:${n.d}px;` +
     `background:${fill};border:${border};box-shadow:${c.nodeShadow}">${pictogramGlyphSvg(n.icon, Math.round(n.d * 0.54), glyph)}</div>`;
 }
@@ -75,7 +77,10 @@ export function drawGraph(G, c, frame, sizes) {
       out.push(`<div style="${at({ x: g.rect.x + 30 * ts, y: g.rect.y + 26 * ts, w, h })}">${groupLabelHtml(g, c, ts)}</div>`);
     }
   }
-  const paths = G.links.filter((l) => l.pts.length > 1);
+  // Quiet links (muted, dashed, dotted) paint first, so a solid link that
+  // shares a trunk or a port stays on top.
+  const quiet = (l) => (l.color === 'muted' ? 2 : 0) + (l.style !== 'solid' ? 1 : 0);
+  const paths = G.links.filter((l) => l.pts.length > 1).sort((a, b) => quiet(b) - quiet(a) || a.index - b.index);
   const B = union(paths.flatMap((l) => l.pts.map((p) => ({ x: p.x, y: p.y, w: 0, h: 0 }))));
   const pad = 60;
   out.push(`<svg style="position:absolute;left:${f(B.x - pad)}px;top:${f(B.y - pad)}px;overflow:visible" width="${f(B.w + pad * 2)}" height="${f(B.h + pad * 2)}" ` +
@@ -88,10 +93,15 @@ export function drawGraph(G, c, frame, sizes) {
   }
   for (const n of G.nodes) {
     out.push(n.shape === 'box' ? boxNode(n, c, ts) : circleNode(n, c));
-    if (n.labelRect) out.push(`<div style="${at(n.labelRect)}">${nodeLabelHtml(n, c, ts, n.labelAlign)}</div>`);
+    if (n.labelRect) {
+      const badge = n.labelBadge
+        ? `;background:${c.chipBg};border-radius:${9 * ts}px;box-shadow:${c.nodeShadow};outline:${8 * ts}px solid ${c.chipBg}` : '';
+      out.push(`<div style="${at(n.labelRect)}${badge}">${nodeLabelHtml(n, c, ts, n.labelAlign)}</div>`);
+    }
   }
   const stage = `<div style="position:absolute;left:0;top:0;transform-origin:0 0;` +
     `transform:translate(${f(frame.tx)}px,${f(frame.ty)}px) scale(${f(frame.s * 1000) / 1000})">${out.join('')}</div>`;
   const title = titleHtml(G.opts, c);
-  return stage + (title ? `<div style="position:absolute;left:76px;top:64px">${title}</div>` : '');
+  const ts2 = frame.titleScale || 1;
+  return stage + (title ? `<div style="position:absolute;left:76px;top:${f(64 * ts2)}px;transform-origin:0 0;transform:scale(${f(ts2 * 1000) / 1000})">${title}</div>` : '');
 }

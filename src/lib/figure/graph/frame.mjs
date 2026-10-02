@@ -28,24 +28,24 @@ export function contentBounds(G) {
   return union(rects);
 }
 
-// Scale and center the drawing. An explicit size is a frame to fit into; with
-// no size the canvas is 1600 wide and as tall as the drawing needs.
-export function fitFrame(B, opts, titleBand) {
-  const m = 76;
-  const maxUp = 1.35;
+// Scale and center the drawing. An explicit size is a frame to fit into. With
+// no size the drawing sets the canvas: up to 1600 wide (no narrower than 1100)
+// and as tall as it needs, up to 2000.
+export const FRAME = { margin: 76, maxW: 1600, minW: 1100, minH: 440, maxH: 2000 };
+
+export function fitFrame(B, opts, titleBand, titleW = 0) {
+  const m = FRAME.margin;
   const bw = Math.max(B.w, 1), bh = Math.max(B.h, 1);
   if (opts.sizePx) {
     const [W, H] = opts.sizePx;
     const aw = W - m * 2, ah = H - m * 2 - titleBand;
-    const s = opts.fit ? Math.min(aw / bw, ah / bh, maxUp) : 1;
+    const s = opts.fit ? Math.min(aw / bw, ah / bh, 1.35) : 1;
     return { W, H, s, tx: m + (aw - bw * s) / 2 - B.x * s, ty: m + titleBand + (ah - bh * s) / 2 - B.y * s };
   }
-  const W = 1600;
-  const minH = 440, maxH = 1400;
-  let s = Math.min(maxUp, (W - m * 2) / bw);
-  let H = Math.round(bh * s + m * 2 + titleBand);
-  if (H > maxH) { s = (maxH - m * 2 - titleBand) / bh; H = maxH; }
-  H = Math.max(H, minH);
+  let s = Math.min(1.15, (FRAME.maxW - m * 2) / bw);
+  if (bh * s + m * 2 + titleBand > FRAME.maxH) s = (FRAME.maxH - m * 2 - titleBand) / bh;
+  const W = Math.round(Math.min(FRAME.maxW, Math.max(FRAME.minW, bw * s + m * 2, titleW + m * 2)));
+  const H = Math.round(Math.max(FRAME.minH, bh * s + m * 2 + titleBand));
   const ah = H - m * 2 - titleBand;
   return { W, H, s, tx: (W - bw * s) / 2 - B.x * s, ty: m + titleBand + (ah - bh * s) / 2 - B.y * s };
 }
@@ -61,7 +61,7 @@ export function collectWarnings(G, s) {
     }
     const n = labels[i];
     const probe = inflate(n.labelRect, -2);
-    for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) warn.push(`label ${name(n)} crosses link ${lname(l)}`);
+    if (!n.labelBadge) for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) warn.push(`label ${name(n)} crosses link ${lname(l)}`);
     for (const o of G.nodes) if (o !== n && overlapArea(probe, nodeRect(o)) > 4) warn.push(`label ${name(n)} overlaps node ${name(o)}`);
   }
   const chipped = G.links.filter((l) => l.chipRect);
@@ -87,6 +87,7 @@ export function collectWarnings(G, s) {
     const inside = (n) => { for (let p = n.group; p; p = G.groups.find((x) => x.id === p)?.parent) if (p === g.id) return true; return false; };
     for (const n of G.nodes) if (!inside(n) && overlapArea(inflate(g.rect, -2), nodeRect(n)) > 4) warn.push(`group "${g.label}" covers node ${name(n)}, which is not in it`);
   }
+  warn.push(...(G.notes || []));
   if (s < 0.7) warn.push(`text renders at ${Math.round(s * 100)}% to fit the frame; drop the size, shorten labels, or split the figure`);
   return [...new Set(warn)];
 }

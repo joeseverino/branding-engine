@@ -3,6 +3,7 @@
 // lib/figure/. Brand color comes from a tokens.css file (the `brand` tool
 // passes the kit's), an inline `colors` block in the spec, or built-in defaults.
 import { readFileSync } from 'node:fs';
+import sharp from 'sharp';
 import path from 'node:path';
 import { parseFig, renderFigure } from './lib/figure.mjs';
 import { withBrowser } from './lib/render.mjs';
@@ -34,14 +35,17 @@ export async function makeFigure({ specPath, spec, out, tokens, tokensPath, scal
   const resolved = spec || readSpec(specPath);
   const outPath = out || (specPath ? defaultOut(specPath) : undefined);
   const tok = tokens || readTokens(tokensPath);
-  const render = (b) => renderFigure(b, resolved, { outPath, tokens: tok, scale: scale ? Number(scale) : 2 });
+  // Render to a buffer and write only once the strict check has passed, so a
+  // figure that failed review never lands on disk.
+  const render = (b) => renderFigure(b, resolved, { tokens: tok, scale: scale ? Number(scale) : 2 });
   const res = browser ? await render(browser) : await withBrowser(render);
-  if (!quiet) {
-    for (const w of res.warnings) console.warn(`  warn      ${w}`);
-    if (outPath) console.log(`  figure    ${path.basename(outPath)} (${res.width}×${res.height})`);
-  }
+  if (!quiet) for (const w of res.warnings) console.warn(`  warn      ${w}`);
   if (strict && res.warnings.length) {
-    throw new Error(`${res.warnings.length} figure warning(s) with --strict:\n${res.warnings.map((w) => `  - ${w}`).join('\n')}`);
+    throw new Error(`${res.warnings.length} figure warning(s) with --strict; nothing written:\n${res.warnings.map((w) => `  - ${w}`).join('\n')}`);
+  }
+  if (outPath) {
+    await sharp(res.buffer).png().toFile(outPath);
+    if (!quiet) console.log(`  figure    ${path.basename(outPath)} (${res.width}×${res.height})`);
   }
   return { ...res, outPath };
 }
