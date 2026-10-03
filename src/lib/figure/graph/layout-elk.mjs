@@ -63,6 +63,30 @@ export function separateTouchingRuns(links, { gap = 40, shift = 18 } = {}) {
   }
 }
 
+// ELK places connected nodes a few pixels apart on the cross axis, and a link
+// that ends square-on at each center then steps by those pixels just before
+// its arrow. Snap the run after a short step onto the run before it, so the
+// line stays straight and meets its end a hair off center.
+export function straightenJogs(links, { tolerance = 14 } = {}) {
+  for (const l of links) {
+    const pts = l.pts;
+    for (let i = 1; i < pts.length - 2; i++) {
+      const a = pts[i - 1], b = pts[i], c = pts[i + 1], d = pts[i + 2];
+      const vertical = Math.abs(b.x - c.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(c.y - d.y) < 0.5;
+      const horizontal = Math.abs(b.y - c.y) < 0.5 && Math.abs(a.x - b.x) < 0.5 && Math.abs(c.x - d.x) < 0.5;
+      if (!vertical && !horizontal) continue;
+      const k = vertical ? 'y' : 'x';
+      const step = c[k] - b[k];
+      if (!step || Math.abs(step) > tolerance) continue;
+      const chip = l.chipRect, size = k === 'y' ? 'h' : 'w';
+      if (chip && Math.abs(chip[k] + chip[size] / 2 - c[k]) < 1) l.chipRect = { ...chip, [k]: chip[k] - step };
+      for (let j = i + 1; j < pts.length && Math.abs(pts[j][k] - c[k]) < 0.5; j++) pts[j] = { ...pts[j], [k]: b[k] };
+      pts.splice(i, 2);
+      i = Math.max(0, i - 2);
+    }
+  }
+}
+
 // An end on a group's border: on the segment's axis through `p` (the port),
 // `gap` outside the side it meets, facing `next`.
 function borderAlong(r, p, next, gap) {
@@ -257,5 +281,8 @@ export async function layoutElk(G, groupPad, direction = G.opts.direction, { wra
       l.chipRect = rect(lb.x + o.x, lb.y + o.y, l.chipSize.w, l.chipSize.h);
     }
   }
-  if (ported) separateTouchingRuns(G.links.filter((l) => l.pts.length > 3));
+  if (ported) {
+    straightenJogs(G.links.filter((l) => l.pts.length > 3));
+    separateTouchingRuns(G.links.filter((l) => l.pts.length > 3));
+  }
 }
