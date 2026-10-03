@@ -447,3 +447,16 @@ test('ELK: runs of two links that nearly meet on one track are nudged apart', as
   separateTouchingRuns([fan1, fan2]);
   assert.equal(fan2.pts[1].x, 100, 'a fan-out keeps its shared trunk');
 });
+
+test('ELK: a short step before a link\'s end is straightened onto the run before it', async () => {
+  const { straightenJogs } = await import('../src/lib/figure/graph/layout-elk.mjs');
+  const step = { pts: [{ x: 0, y: 163 }, { x: 340, y: 163 }, { x: 340, y: 170 }, { x: 490, y: 170 }] };
+  const detour = { pts: [{ x: 0, y: 348 }, { x: 120, y: 348 }, { x: 120, y: 429 }, { x: 500, y: 429 }, { x: 500, y: 421 }, { x: 640, y: 421 }],
+    chipRect: { x: 550, y: 409, w: 60, h: 24 } };
+  const real = { pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 300, y: 80 }] };
+  straightenJogs([step, detour, real]);
+  assert.deepEqual(step.pts, [{ x: 0, y: 163 }, { x: 490, y: 163 }], 'one straight run');
+  assert.deepEqual(detour.pts, [{ x: 0, y: 348 }, { x: 120, y: 348 }, { x: 120, y: 429 }, { x: 640, y: 429 }], 'the real bend stays, the step goes');
+  assert.equal(detour.chipRect.y, 417, 'a label on the moved run moves with it');
+  assert.equal(real.pts.length, 4, 'a bend longer than the tolerance is kept');
+});
