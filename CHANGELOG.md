@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## 0.8.1 - 2026-10-03
+
+- Links run straight into their end: the few-pixel step ELK left before an
+  arrow, most visible where a link entered a group, is snapped out.
+
 ## 0.8.0 - 2026-10-02
 
 - Rebuild the `topology` figure (alias `diagram`) as a graph engine: a `.fig`
