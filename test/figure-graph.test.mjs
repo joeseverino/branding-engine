@@ -11,6 +11,8 @@ import { FigureSpecError, suggest, validateSpec } from '../src/lib/figure/schema
 import { normalize } from '../src/lib/figure/graph/normalize.mjs';
 import { layoutGeo } from '../src/lib/figure/graph/layout-geo.mjs';
 import { layoutElk } from '../src/lib/figure/graph/layout-elk.mjs';
+import { renderGraph } from '../src/lib/figure/graph/index.mjs';
+import { palette } from '../src/lib/figure/palette.mjs';
 import { nodeRect, placeChips, placeLabels } from '../src/lib/figure/graph/place.mjs';
 import { contentBounds, fitFrame } from '../src/lib/figure/graph/frame.mjs';
 import { makeFigure } from '../src/make-figure.mjs';
@@ -190,6 +192,32 @@ test('ELK: grouped graph lays out with no overlapping nodes or labels', async ()
     assert.ok(r.x >= g.x && r.y >= g.y && r.x + r.w <= g.x + g.w && r.y + r.h <= g.y + g.h, `${id} inside its group`);
   }
   for (const l of G.links) assert.ok(l.pts.length >= 2, `${l.id} routed`);
+});
+
+test('a wrapped layout that ELK cannot compute leaves the unwrapped one in place', async () => {
+  // With these measured sizes ELK's row wrapping throws on this grouped, labelled graph.
+  const spec = parseFig([
+    'direction: right',
+    'Mac [dashed] {', '  Obsidian vault [icon: file]', '  Content sync [icon: terminal]', '}',
+    'GitHub [dashed] {', '  Repository [icon: code]', '  dist branch [icon: file]', '}',
+    'Cloudflare [dashed] {', '  Pages build [icon: cpu]', '  Edge [icon: globe]', '}',
+    'Obsidian vault > Content sync',
+    'Content sync > Repository: pull request',
+    'Repository > Pages build',
+    'Repository > dist branch',
+    'Pages build > Edge',
+  ].join('\n'));
+  const widths = { 'Obsidian vault': 201, 'Content sync': 230, Repository: 172, 'dist branch': 182, 'Pages build': 208, Edge: 265 };
+  const measure = async (fragments) => fragments.map((html) => {
+    if (html.includes('pull request')) return { w: 171, h: 46 };
+    const name = Object.keys(widths).find((id) => html.includes(id));
+    return name ? { w: widths[name], h: 68 } : { w: 60, h: 28 };
+  });
+  const { graph } = await renderGraph(spec, palette('light', {}), measure);
+  assert.equal(graph.opts.wrapped, false);
+  const chipped = graph.links.find((l) => l.label);
+  assert.ok(chipped.chipRect, 'the chip is placed');
+  for (const n of graph.nodes) assert.equal(overlapArea(chipped.chipRect, nodeRect(n)), 0, `the chip clears ${n.id}`);
 });
 
 // --- rendering (skips cleanly if Playwright is not installed) -----------------

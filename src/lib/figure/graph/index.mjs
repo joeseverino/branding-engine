@@ -68,7 +68,14 @@ export async function renderGraph(spec, c, measure) {
     let best, last;
     for (const t of tries) {
       if (best && best.s >= 0.7) break;
-      await layoutElk(G, groupPad, t.dir, t);
+      try {
+        await layoutElk(G, groupPad, t.dir, t);
+      } catch (error) {
+        // ELK's row wrapping throws on some compound graphs. It only ever
+        // improves a layout that already exists, so that layout stands.
+        if (!t.wrap || !best) throw error;
+        continue;
+      }
       placeEndLabels(G);
       last = t;
       const s = frameFor().s;

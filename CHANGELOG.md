@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+- A figure no longer fails when ELK cannot compute its row-wrapped layout (it
+  threw `java.util.NoSuchElementException` on some grouped, labelled graphs).
+  The unwrapped layout already in hand is used instead.
+
 ## 0.8.1 - 2026-10-03
 
 - Links run straight into their end: the few-pixel step ELK left before an
