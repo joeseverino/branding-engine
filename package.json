@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/rewrite-declarations.ts",
+    "build": "node scripts/clean.ts && tsc -p tsconfig.build.json && node scripts/rewrite-declarations.ts",
     "prepack": "npm run build",
     "test": "node --test test/*.test.ts",
     "test:core": "node --test test/smoke.test.ts test/regressions.test.ts test/cli.test.ts",
@@ -21,6 +21,7 @@
       "default": "./dist/index.js"
     }
   },
+  "sideEffects": false,
   "files": [
     "dist",
     "assets",
@@ -47,9 +48,6 @@
     "svg",
     "social-cards"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "dependencies": {
     "elkjs": "^0.12.0",
     "opentype.js": "^2.0.0",

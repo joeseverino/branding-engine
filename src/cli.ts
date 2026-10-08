@@ -9,33 +9,58 @@
 //   branding-engine pictogram --spec <file.json> [--out <dir>]
 // Stages for --only: mark, wordmark, sheet, web, cards (mark includes favicons).
 import { readFileSync } from 'node:fs';
+import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 import { buildBrand, buildKit } from './build.ts';
 import { errorMessage, parseJson } from './lib/guards.ts';
 import { makeFigure } from './make-figure.ts';
 import { isPictogramFiles, makePictogram, makePictograms } from './make-pictogram.ts';
 import { generateSite, initSite } from './site.ts';
 
-const BOOLEAN_FLAGS = new Set(['strict', 'circle-preview', 'no-circle-preview']);
+const OPTIONS = {
+  config: { type: 'string' },
+  public: { type: 'string' },
+  out: { type: 'string' },
+  only: { type: 'string' },
+  font: { type: 'string' },
+  tokens: { type: 'string' },
+  scale: { type: 'string' },
+  spec: { type: 'string' },
+  text: { type: 'string' },
+  logo: { type: 'string' },
+  tint: { type: 'string' },
+  name: { type: 'string' },
+  size: { type: 'string' },
+  fit: { type: 'string' },
+  variants: { type: 'string' },
+  strict: { type: 'boolean' },
+  'circle-preview': { type: 'boolean' },
+} as const satisfies ParseArgsOptionsConfig;
 
-interface Args {
-  pos: string[];
-  opt: Map<string, string | true>;
+type Flags = ReturnType<typeof parseFlags>;
+
+const NEGATIVE_NUMBER = /^-\.?\d/;
+
+function parseFlags(argv: readonly string[]) {
+  try {
+    return parseArgs({ args: [...argv], options: OPTIONS, allowPositionals: true, allowNegative: true });
+  } catch (error) {
+    throw new Error(parseFailure(error, argv), { cause: error });
+  }
 }
 
-function parse(argv: readonly string[]): Args {
-  const pos: string[] = [];
-  const opt = new Map<string, string | true>();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith('--')) {
-      const key = a.slice(2);
-      const next = argv[i + 1];
-      opt.set(key, !BOOLEAN_FLAGS.has(key) && next && !next.startsWith('--') ? argv[++i] : true);
-    } else {
-      pos.push(a);
-    }
+function parseFailure(error: unknown, argv: readonly string[]): string {
+  const message = errorMessage(error);
+  const code = error instanceof Error && 'code' in error ? error.code : undefined;
+  const flag = /'--([^'\s<]+)/.exec(message)?.[1];
+  if (code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION' && flag) {
+    return `Unknown flag --${flag}. Run \`branding-engine --help\` for the flags.`;
   }
-  return { pos, opt };
+  if (code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && flag && !message.includes('does not take')) {
+    const given = argv[argv.indexOf(`--${flag}`) + 1];
+    if (given !== undefined && NEGATIVE_NUMBER.test(given)) return `--${flag} must be a positive number, got "${given}".`;
+    return `--${flag} needs a value.`;
+  }
+  return message.split('\n')[0] ?? message;
 }
 
 const USAGE =
@@ -62,17 +87,9 @@ const USAGE =
   '    spec: an array of { glyph | text | logo, hex, name?, size?, fit?, tint?, variants?, circlePreview? }.';
 
 const [cmd, ...rest] = process.argv.slice(2);
-const { pos, opt } = parse(rest);
 
-/** The value of a flag that takes one. */
-function value(name: string): string | undefined {
-  const v = opt.get(name);
-  if (v === true) throw new Error(`--${name} needs a value.`);
-  return v;
-}
-
-function positive(name: string): number | undefined {
-  const raw = value(name);
+function positive(values: Flags['values'], name: 'scale' | 'size' | 'fit'): number | undefined {
+  const raw = values[name];
   if (raw === undefined) return undefined;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`--${name} must be a positive number, got "${raw}".`);
@@ -85,12 +102,12 @@ function usageExit(): never {
 }
 
 async function run(): Promise<void> {
+  if (cmd === undefined || cmd === '--help' || cmd === '-h') {
+    console.log(USAGE);
+    return;
+  }
+  const { values, positionals: pos } = parseFlags(rest);
   switch (cmd) {
-    case undefined:
-    case '--help':
-    case '-h':
-      console.log(USAGE);
-      return;
     case 'init': {
       const { created, headSnippet } = initSite({});
       if (created.length) console.log('Created:\n' + created.map((c) => '  ' + c).join('\n'));
@@ -100,7 +117,7 @@ async function run(): Promise<void> {
       return;
     }
     case 'generate': {
-      const { written, publicDir, headSnippet } = await generateSite({ config: value('config'), publicDir: value('public') });
+      const { written, publicDir, headSnippet } = await generateSite({ config: values.config, publicDir: values.public });
       console.log(`Wrote ${written.length} files to ${publicDir}:`);
       console.log(written.map((w) => '  ' + w).join('\n'));
       console.log('\n<head> snippet (theme-color reflects your accent):\n');
@@ -108,33 +125,33 @@ async function run(): Promise<void> {
       return;
     }
     case 'build':
-      await buildBrand({ config: value('config'), outDir: value('out'), only: value('only') });
+      await buildBrand({ config: values.config, outDir: values.out, only: values.only });
       return;
     case 'kit': {
       const [slug, hex, glyph, wordmark] = pos;
       if (!slug || !hex || !glyph) usageExit();
-      await buildKit({ slug, hex, glyph, wordmark, font: value('font'), outDir: value('out'), only: value('only') });
+      await buildKit({ slug, hex, glyph, wordmark, font: values.font, outDir: values.out, only: values.only });
       return;
     }
     case 'figure': {
       const [specPath] = pos;
       if (!specPath) usageExit();
-      await makeFigure({ specPath, out: value('out'), tokensPath: value('tokens'), scale: positive('scale'), strict: opt.has('strict') });
+      await makeFigure({ specPath, out: values.out, tokensPath: values.tokens, scale: positive(values, 'scale'), strict: values.strict === true });
       return;
     }
     case 'pictogram':
-      await pictogram();
+      await pictogram(values, pos);
       return;
     default:
       usageExit();
   }
 }
 
-async function pictogram(): Promise<void> {
-  const specFile = value('spec');
+async function pictogram(values: Flags['values'], pos: readonly string[]): Promise<void> {
+  const specFile = values.spec;
   const written = specFile
-    ? await makePictograms({ spec: parseJson(readFileSync(specFile, 'utf8')), outDir: value('out'), tokensPath: value('tokens') })
-    : [await pictogramFromFlags()];
+    ? await makePictograms({ spec: parseJson(readFileSync(specFile, 'utf8')), outDir: values.out, tokensPath: values.tokens })
+    : [await pictogramFromFlags(values, pos)];
   for (const w of written) {
     for (const files of isPictogramFiles(w) ? [w] : Object.values(w)) {
       console.log(`wrote ${[files.svg, files.png, files.circle].filter(Boolean).join(' + ')}`);
@@ -142,9 +159,9 @@ async function pictogram(): Promise<void> {
   }
 }
 
-async function pictogramFromFlags(): Promise<Awaited<ReturnType<typeof makePictogram>>> {
-  const text = value('text');
-  const logo = value('logo');
+async function pictogramFromFlags(values: Flags['values'], pos: readonly string[]): Promise<Awaited<ReturnType<typeof makePictogram>>> {
+  const text = values.text;
+  const logo = values.logo;
   const external = logo || text;
   const [glyphPos, hexPos] = pos;
   const glyph = external ? undefined : glyphPos;
@@ -155,14 +172,14 @@ async function pictogramFromFlags(): Promise<Awaited<ReturnType<typeof makePicto
     text,
     logo,
     hex,
-    tint: value('tint'),
-    name: value('name'),
-    outDir: value('out'),
-    size: positive('size'),
-    fit: positive('fit'),
-    variants: value('variants'),
-    circlePreview: opt.has('no-circle-preview') ? false : (opt.has('circle-preview') ? true : undefined),
-    tokensPath: value('tokens'),
+    tint: values.tint,
+    name: values.name,
+    outDir: values.out,
+    size: positive(values, 'size'),
+    fit: positive(values, 'fit'),
+    variants: values.variants,
+    circlePreview: values['circle-preview'],
+    tokensPath: values.tokens,
   });
 }
 

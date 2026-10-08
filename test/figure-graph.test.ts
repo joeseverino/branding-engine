@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, stat, writeFile } from 'node:fs/promises';
+import { stat, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
 import { parseFig } from '../src/lib/figure/dsl.ts';
-import { inflate, overlapArea, pathHitsRect, pointAlong, rect, rimPoint, segmentHitsRect, union, type Rect } from '../src/lib/figure/geom.ts';
+import { inflate, overlapArea, pathHitsRect, pointAlong, rect, rimPoint, segmentHitsRect, segments, union, type Point, type Rect } from '../src/lib/figure/geom.ts';
 import { FigureSpecError, suggest, validateSpec } from '../src/lib/figure/schema.ts';
 import { required } from '../src/lib/guards.ts';
-import type { Browser } from '../src/lib/render.ts';
 import { normalize } from '../src/lib/figure/graph/normalize.ts';
 import { layoutGeo } from '../src/lib/figure/graph/layout-geo.ts';
 import { layoutElk } from '../src/lib/figure/graph/layout-elk.ts';
@@ -21,7 +19,7 @@ import { palette } from '../src/lib/figure/palette.ts';
 import { nodeRect, placeChips, placeLabels, placeGroupLabels, type LabelledGroups } from '../src/lib/figure/graph/place.ts';
 import { contentBounds, fitFrame } from '../src/lib/figure/graph/frame.ts';
 import { makeFigure } from '../src/make-figure.ts';
-import { launchBrowser } from '../src/lib/render.ts';
+import { browserOrSkip, scratch } from './support.ts';
 
 const isSpecError = (e: unknown, re: RegExp): boolean => e instanceof FigureSpecError && re.test(e.message);
 const node = (G: Graph, id: string) => required(G.byId.get(id), `node ${id}`);
@@ -52,7 +50,7 @@ test('fig: names with dashes, node props, flags, quoted strings and comments', (
   const [a, b] = s.nodes;
   assert.deepEqual(a, { id: 'app-server', icon: 'server', note: 'API, workers', role: 'anchor' });
   assert.deepEqual(b, { id: 'n1', label: 'two\nlines', at: [1, 2], scale: 1.2, shape: 'box' });
-  assert.equal(s.links[0].to, 'n1');
+  assert.equal(s.links.at(0)?.to, 'n1');
 });
 
 test('fig: directives, inline declarations and nested groups', () => {
@@ -101,7 +99,7 @@ test('normalize cross-checks ids and folds legacy keys', () => {
   });
   assert.equal(node(G, 'a').note, '.1');
   assert.ok(node(G, 'hub').isCenter);
-  assert.deepEqual([G.links[0].from, G.links[0].to, G.links[0].dir, G.links[0].toLabel], ['hub', 'a', 'to', 'x']);
+  assert.deepEqual(G.links.map((l) => [l.from, l.to, l.dir, l.toLabel]), [['hub', 'a', 'to', 'x']]);
   assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a', pos: 'center' }] }).opts.layout, 'star');
   assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }] }).opts.layout, 'row');
   assert.equal(normalize({ template: 'topology', nodes: [{ id: 'a' }], links: [] }).opts.layout, 'auto');
@@ -195,8 +193,8 @@ test('ELK: grouped graph lays out with no overlapping nodes or labels', async ()
   }, 220, 72);
   await layoutElk(G, { top: 80, side: 34 });
   const boxes = G.nodes.flatMap((n): Array<[string, Rect]> => [[`${n.id}`, nodeRect(n)], [`${n.id} label`, required(n.labelRect, `the label of ${n.id}`)]]);
-  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-    assert.equal(overlapArea(boxes[i][1], boxes[j][1]), 0, `${boxes[i][0]} overlaps ${boxes[j][0]}`);
+  for (const [i, [name, box]] of boxes.entries()) for (const [otherName, other] of boxes.slice(i + 1)) {
+    assert.equal(overlapArea(box, other), 0, `${name} overlaps ${otherName}`);
   }
   const g = required(G.groups[0]?.rect, 'the group rect');
   for (const id of ['srv', 'pid', 'pt']) {
@@ -234,29 +232,27 @@ test('a wrapped layout that ELK cannot compute leaves the unwrapped one in place
 // --- rendering (skips cleanly if Playwright is not installed) -----------------
 
 test('renders .fig and JSON graphs, reports warnings, --strict fails on them', async (t) => {
-  let browser: Browser;
-  try { browser = await launchBrowser(); } catch { return t.skip('Playwright not installed'); }
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'figure-graph-'));
-  try {
-    const fig = path.join(dir, 'flow.fig');
-    await writeFile(fig, 'title: Flow\nA [icon: laptop] > B [box, icon: cloud]: hop\nG { C [muted] }\nB --> C');
-    const res = await makeFigure({ specPath: fig, browser, quiet: true });
-    assert.equal(res.outPath, path.join(dir, 'flow.png'));
-    assert.ok(res.width >= 2200 && res.width <= 3200, `content-sized width ${res.width}`);
-    assert.deepEqual(res.warnings, []);
+  const browser = await browserOrSkip(t);
+  if (!browser) return;
+  await using tmp = await scratch('figure-graph');
+  const dir = tmp.path;
+  const fig = path.join(dir, 'flow.fig');
+  await writeFile(fig, 'title: Flow\nA [icon: laptop] > B [box, icon: cloud]: hop\nG { C [muted] }\nB --> C');
+  const res = await makeFigure({ specPath: fig, browser, quiet: true });
+  assert.equal(res.outPath, path.join(dir, 'flow.png'));
+  assert.ok(res.width >= 2200 && res.width <= 3200, `content-sized width ${res.width}`);
+  assert.deepEqual(res.warnings, []);
 
-    const dark = await makeFigure({ spec: { template: 'diagram', theme: 'dark', size: 'og', nodes: [{ id: 'a' }, { id: 'b' }], links: [{ from: 'a', to: 'b' }] }, browser, quiet: true });
-    assert.deepEqual([dark.width, dark.height], [2400, 1260]);
+  const dark = await makeFigure({ spec: { template: 'diagram', theme: 'dark', size: 'og', nodes: [{ id: 'a' }, { id: 'b' }], links: [{ from: 'a', to: 'b' }] }, browser, quiet: true });
+  assert.deepEqual([dark.width, dark.height], [2400, 1260]);
 
-    // Two nodes stacked on one spot: overlapping labels must be reported.
-    const clash = { template: 'topology', layout: 'free', nodes: [{ id: 'a', at: [0.5, 0.5], labelPos: 'below' }, { id: 'b', at: [0.5, 0.5], labelPos: 'below' }] };
-    const warned = await makeFigure({ spec: clash, browser, quiet: true });
-    assert.ok(warned.warnings.some((w) => /overlap/.test(w)), warned.warnings.join('; '));
-    await assert.rejects(() => makeFigure({ spec: clash, browser, quiet: true, strict: true }), /with --strict/);
-  } finally { await browser.close(); }
+  // Two nodes stacked on one spot: overlapping labels must be reported.
+  const clash = { template: 'topology', layout: 'free', nodes: [{ id: 'a', at: [0.5, 0.5], labelPos: 'below' }, { id: 'b', at: [0.5, 0.5], labelPos: 'below' }] };
+  const warned = await makeFigure({ spec: clash, browser, quiet: true });
+  assert.ok(warned.warnings.some((w) => /overlap/.test(w)), warned.warnings.join('; '));
+  await assert.rejects(() => makeFigure({ spec: clash, browser, quiet: true, strict: true }), /with --strict/);
 });
 
-// --- review fixes -------------------------------------------------------------
 
 const figErr = (text: string, re: RegExp): void => assert.throws(() => parseFig(text), (e) => isSpecError(e, re), `expected ${re}`);
 
@@ -303,15 +299,17 @@ test('fig: comments only at a line start or after a space; quoted names keep ope
   assert.deepEqual(parseFig('http://x > D # note').links.map((l) => [l.from, l.to]), [['http://x', 'D']]);
   const q = parseFig('"A > B" [icon: server]\n"A > B" > "C, D": hop');
   assert.deepEqual(q.nodes, [{ id: 'A > B', icon: 'server' }, { id: 'C, D' }]);
-  assert.equal(q.links[0].label, 'hop');
+  assert.equal(q.links.at(0)?.label, 'hop');
 });
 
 test('fig: link props before or after the label; node props on the last endpoint', () => {
-  const a = parseFig('A > B [dashed]: x').links[0];
+  const [a] = parseFig('A > B [dashed]: x').links;
+  assert.ok(a);
   assert.deepEqual([a.label, a.style], ['x', 'dashed']);
   const b = parseFig('A > B [icon: server]');
-  assert.equal(b.nodes[1].icon, 'server');
-  assert.ok(b.links[0] && !('icon' in b.links[0]), 'the bracket belongs to the node, not the link');
+  assert.equal(b.nodes.at(1)?.icon, 'server');
+  const [bLink] = b.links;
+  assert.ok(bLink && !('icon' in bLink), 'the bracket belongs to the node, not the link');
 });
 
 test('normalize: self-links and empty groups are noted, not silently dropped', () => {
@@ -336,15 +334,14 @@ test('ELK: orthogonal by default, ends square to the rim', async () => {
     links: [{ from: 'a', to: 'b' }, { from: 'a', to: 'c' }, { from: 'a', to: 'd' }, { from: 'b', to: 'd' }] });
   await layoutElk(G, { top: 80, side: 34 });
   for (const l of G.links) {
-    l.pts.forEach((p, i) => {
-      if (!i) return;
-      const q = l.pts[i - 1];
-      assert.ok(Math.abs(p.x - q.x) < 0.5 || Math.abs(p.y - q.y) < 0.5, `${l.id} segment ${i} is axis-aligned`);
-    });
+    for (const [i, [q, p]] of [...segments(l.pts)].entries()) {
+      assert.ok(Math.abs(p.x - q.x) < 0.5 || Math.abs(p.y - q.y) < 0.5, `${l.id} segment ${i + 1} is axis-aligned`);
+    }
     const a = node(G, l.from), b = node(G, l.to);
     assert.ok(a.shape === 'circle' && b.shape === 'circle');
-    assert.ok(Math.abs(Math.hypot(l.pts[0].x - a.x, l.pts[0].y - a.y) - (a.d / 2 + 9)) < 1, `${l.id} leaves at the rim`);
-    const e = l.pts[l.pts.length - 1];
+    const [s] = l.pts, e = l.pts.at(-1);
+    assert.ok(s && e);
+    assert.ok(Math.abs(Math.hypot(s.x - a.x, s.y - a.y) - (a.d / 2 + 9)) < 1, `${l.id} leaves at the rim`);
     assert.ok(Math.abs(Math.hypot(e.x - b.x, e.y - b.y) - (b.d / 2 + 9)) < 1, `${l.id} arrives at the rim`);
   }
 });
@@ -363,27 +360,26 @@ test('star: a hub with all eight spokes gets a badge label instead of a warning'
 });
 
 test('renders: wrapped chains read at full size, dark anchors stay visible, --strict writes nothing', async (t) => {
-  let browser: Browser;
-  try { browser = await launchBrowser(); } catch { return t.skip('Playwright not installed'); }
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'figure-review-'));
-  try {
-    const steps = ['Commit', 'Lint', 'Test', 'Build', 'Sign', 'Scan', 'Stage', 'Approve', 'Deploy', 'Verify'];
-    const chain = parseFig(`title: Release\n${steps.join(' > ')}`);
-    const res = await makeFigure({ spec: chain, browser, quiet: true, strict: true });
-    assert.deepEqual(res.warnings, []);
+  const browser = await browserOrSkip(t);
+  if (!browser) return;
+  await using tmp = await scratch('figure-review');
+  const dir = tmp.path;
+  const steps = ['Commit', 'Lint', 'Test', 'Build', 'Sign', 'Scan', 'Stage', 'Approve', 'Deploy', 'Verify'];
+  const chain = parseFig(`title: Release\n${steps.join(' > ')}`);
+  const res = await makeFigure({ spec: chain, browser, quiet: true, strict: true });
+  assert.deepEqual(res.warnings, []);
 
-    const darkSpec = { template: 'diagram', theme: 'dark', nodes: [{ id: 'a', role: 'anchor' }, { id: 'b' }], links: [{ from: 'a', to: 'b', color: 'accent' }] };
-    const { buffer } = await makeFigure({ spec: darkSpec, browser, quiet: true });
-    const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
-    let bright = 0;
-    for (let i = 0; i < data.length; i += info.channels) if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) bright++;
-    assert.ok(bright > 2000, 'paper ring and glyph show on the dark page');
+  const darkSpec = { template: 'diagram', theme: 'dark', nodes: [{ id: 'a', role: 'anchor' }, { id: 'b' }], links: [{ from: 'a', to: 'b', color: 'accent' }] };
+  const { buffer } = await makeFigure({ spec: darkSpec, browser, quiet: true });
+  const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+  let bright = 0;
+  for (let i = 0; i < data.length; i += info.channels) if (Math.min(...data.subarray(i, i + 3)) > 200) bright++;
+  assert.ok(bright > 2000, 'paper ring and glyph show on the dark page');
 
-    const out = path.join(dir, 'clash.png');
-    const clash = { template: 'topology', layout: 'free', nodes: [{ id: 'a', at: [0.5, 0.5], labelPos: 'below' }, { id: 'b', at: [0.5, 0.5], labelPos: 'below' }] };
-    await assert.rejects(() => makeFigure({ spec: clash, out, browser, quiet: true, strict: true }), /nothing written/);
-    await assert.rejects(() => stat(out), /ENOENT/);
-  } finally { await browser.close(); }
+  const out = path.join(dir, 'clash.png');
+  const clash = { template: 'topology', layout: 'free', nodes: [{ id: 'a', at: [0.5, 0.5], labelPos: 'below' }, { id: 'b', at: [0.5, 0.5], labelPos: 'below' }] };
+  await assert.rejects(() => makeFigure({ spec: clash, out, browser, quiet: true, strict: true }), /nothing written/);
+  await assert.rejects(() => stat(out), /ENOENT/);
 });
 
 // --- links to groups ------------------------------------------------------------
@@ -415,12 +411,11 @@ test('fig: a group link fails clearly when the name is ambiguous', () => {
 test('normalize: group ends are checked like node ends', () => {
   const base: GraphSpec = { template: 'topology', nodes: [{ id: 'a' }, { id: 'b' }], groups: [{ id: 'G', label: 'G', nodes: ['b'] }] };
   const ok = normalize({ ...base, links: [{ from: 'a', to: 'G' }] });
-  assert.equal(ok.links[0].toGroup, true);
-  assert.equal(ok.links[0].fromGroup, false);
+  assert.deepEqual(ok.links.map((l) => [l.fromGroup, l.toGroup]), [[false, true]]);
   assert.throws(() => normalize({ ...base, links: [{ from: 'b', to: 'G' }] }), /"b" sits inside group "G"/);
   assert.throws(() => normalize({ ...base, links: [{ from: 'a', to: 'Gx' }] }), /no node or group "Gx" \(did you mean "G"\?\)/);
   const rev = normalize({ ...base, links: [{ from: 'a', to: 'G', dir: 'from' }] });
-  assert.deepEqual([rev.links[0].from, rev.links[0].fromGroup, rev.links[0].to, rev.links[0].toGroup], ['G', true, 'a', false]);
+  assert.deepEqual(rev.links.map((l) => [l.from, l.fromGroup, l.to, l.toGroup]), [['G', true, 'a', false]]);
 });
 
 const bareMeasure = (G: Graph): void => {
@@ -432,9 +427,10 @@ test('ELK: a link to a group stops just outside its border, square to it', async
   const G = normalize(parseFig(SERVERS));
   bareMeasure(G);
   await layoutElk(G, { top: 90, side: 34 });
-  const r = required(G.groupById.get(required(G.links[1], 'link 1').to)?.rect, 'the group rect');
-  const pts = required(G.links[1], 'link 1').pts;
-  const end = pts[pts.length - 1], prev = pts[pts.length - 2];
+  const link = required(G.links[1], 'link 1');
+  const r = required(G.groupById.get(link.to)?.rect, 'the group rect');
+  const pts = link.pts;
+  const end = required(pts.at(-1), 'the last point'), prev = required(pts.at(-2), 'the point before it');
   assert.ok(Math.abs(end.x - (r.x - 9)) < 1, `ends 9px left of the border (${end.x} vs ${r.x - 9})`);
   assert.ok(end.y > r.y && end.y < r.y + r.h, 'meets the border along its side');
   assert.ok(Math.abs(prev.y - end.y) < 0.5, 'last segment is horizontal');
@@ -443,7 +439,7 @@ test('ELK: a link to a group stops just outside its border, square to it', async
   }
 });
 
-test('fixed layouts: a link to a group ends at its border and labels clear it', async () => {
+test('fixed layouts: a link to a group ends at its border and labels clear it', async (t) => {
   const spec = parseFig(SERVERS);
   spec.layout = 'grid';
   const place = (id: string, at: [number, number]): void => { required(spec.nodes.find((n) => n.id === id), id).at = at; };
@@ -451,13 +447,11 @@ test('fixed layouts: a link to a group ends at its border and labels clear it', 
   place('Vault', [0, 0]);
   place('web', [2, 0]);
   place('vps', [2, 1]);
-  const browser = await launchBrowser().catch(() => null);
+  const browser = await browserOrSkip(t);
   if (!browser) return;
-  try {
-    const { warnings, buffer } = await makeFigure({ spec, browser });
-    assert.ok(buffer.length > 1000);
-    assert.deepEqual(warnings, []);
-  } finally { await browser.close(); }
+  const { warnings, buffer } = await makeFigure({ spec, browser });
+  assert.ok(buffer.length > 1000);
+  assert.deepEqual(warnings, []);
 });
 
 test('group labels slide clear of a link crossing their top band', async () => {
@@ -476,19 +470,20 @@ test('group labels slide clear of a link crossing their top band', async () => {
 });
 
 test('ELK: runs of two links that nearly meet on one track are nudged apart', async () => {
+  const xOf = (l: { pts: Point[] }, i: number): number => required(l.pts[i], `point ${i}`).x;
   const { separateTouchingRuns } = await import('../src/lib/figure/graph/layout-elk.ts');
   const a = { from: 'p', to: 'q', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 200 }, { x: 300, y: 200 }] };
   const b = { from: 'r', to: 's', pts: [{ x: 0, y: 500 }, { x: 100, y: 500 }, { x: 100, y: 220 }, { x: 300, y: 220 }] };
   const far = { from: 't', to: 'u', pts: [{ x: 0, y: 900 }, { x: 100, y: 900 }, { x: 100, y: 700 }, { x: 300, y: 700 }] };
   separateTouchingRuns([a, b, far]);
-  assert.equal(a.pts[1].x, 100, 'the first link keeps its track');
-  assert.notEqual(b.pts[1].x, 100, 'the second moves off it');
-  assert.equal(b.pts[1].x, b.pts[2].x, 'and stays vertical');
-  assert.equal(far.pts[1].x, 100, 'runs far apart are left alone');
+  assert.equal(xOf(a, 1), 100, 'the first link keeps its track');
+  assert.notEqual(xOf(b, 1), 100, 'the second moves off it');
+  assert.equal(xOf(b, 1), xOf(b, 2), 'and stays vertical');
+  assert.equal(xOf(far, 1), 100, 'runs far apart are left alone');
   const fan1 = { from: 'hub', to: 'x', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -200 }, { x: 300, y: -200 }] };
   const fan2 = { from: 'hub', to: 'y', pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 200 }, { x: 300, y: 200 }] };
   separateTouchingRuns([fan1, fan2]);
-  assert.equal(fan2.pts[1].x, 100, 'a fan-out keeps its shared trunk');
+  assert.equal(xOf(fan2, 1), 100, 'a fan-out keeps its shared trunk');
 });
 
 test('ELK: a short step before a link\'s end is straightened onto the run before it', async () => {
@@ -504,7 +499,6 @@ test('ELK: a short step before a link\'s end is straightened onto the run before
   assert.equal(real.pts.length, 4, 'a bend longer than the tolerance is kept');
 });
 
-// --- audit fixes --------------------------------------------------------------
 
 test('star layout: a link that ends at a group border does not crash the slot math', () => {
   const G = normalize(parseFig('layout: star\nHub [anchor]\nA\nB\nCloud {\n  x\n  y\n}\nHub > Cloud\nHub > A\nHub > B'));

@@ -5,7 +5,6 @@ import { Buffer } from 'node:buffer';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import opentype, { type Font, type Glyph as OutlineGlyph } from 'opentype.js';
-import wawoff2 from 'wawoff2';
 import { errorMessage } from './guards.ts';
 
 export interface GlyphBounds {
@@ -32,6 +31,7 @@ export interface GlyphSet {
 async function loadFont(fontPath: string): Promise<Font> {
   let bytes = readFileSync(fontPath);
   if (path.extname(fontPath).toLowerCase() === '.woff2') {
+    const { default: wawoff2 } = await import('wawoff2');
     bytes = Buffer.from(await wawoff2.decompress(bytes));
   }
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -82,6 +82,7 @@ export async function extractGlyphs({ chars, weight, fontPath, outPath }: Extrac
   } catch (error) {
     throw new Error(
       `Could not extract glyphs from ${path.basename(fontPath)} in Node: ${errorMessage(error)}`,
+      { cause: error },
     );
   }
 

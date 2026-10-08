@@ -704,9 +704,15 @@ variable font.
 ## Errors
 
 The CLI exits nonzero with an actionable message for invalid glyphs, invalid
-colors, missing or invalid configs, unknown `--only` stages, flags that need a
-value, unavailable font glyphs, or missing optional browser dependencies. A
-config with several problems reports all of them, each by field path.
+colors, missing or invalid configs, unknown `--only` stages, unknown flags,
+flags that need a value, unavailable font glyphs, or missing optional browser
+dependencies. A config with several problems reports all of them, each by field
+path.
+
+Flags may be written `--out dir` or `--out=dir`. `--circle-preview` has a
+negated form, `--no-circle-preview`. A flag the command does not recognize fails
+with `Unknown flag --name.`, so a mistyped `--onyl` cannot silently build every
+stage.
 
 Example:
 

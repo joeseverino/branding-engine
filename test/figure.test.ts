@@ -4,7 +4,7 @@ import sharp from 'sharp';
 
 import { figureSize, palette, resolveSize, TEMPLATES } from '../src/lib/figure/index.ts';
 import { makeFigure, readTokens } from '../src/make-figure.ts';
-import { launchBrowser } from '../src/lib/render.ts';
+import { browserOrSkip } from './support.ts';
 
 // --- pure unit coverage (always runs, no browser) --------------------------
 
@@ -89,23 +89,19 @@ const specs = {
 };
 
 test('renders every template to a correctly-sized PNG at 2x', async (t) => {
-  let browser;
-  try { browser = await launchBrowser(); } catch { return t.skip('Playwright not installed'); }
-  try {
-    for (const [name, spec] of Object.entries(specs)) {
-      const { buffer, width, height } = await makeFigure({ spec, browser });
-      const meta = await sharp(buffer).metadata();
-      assert.equal(meta.format, 'png', name);
-      assert.equal(meta.width, width, name);
-      assert.equal(meta.height, height, name);
-    }
-  } finally { await browser.close(); }
+  const browser = await browserOrSkip(t);
+  if (!browser) return;
+  for (const [name, spec] of Object.entries(specs)) {
+    const { buffer, width, height } = await makeFigure({ spec, browser });
+    const meta = await sharp(buffer).metadata();
+    assert.equal(meta.format, 'png', name);
+    assert.equal(meta.width, width, name);
+    assert.equal(meta.height, height, name);
+  }
 });
 
 test('an unknown template fails closed', async (t) => {
-  let browser;
-  try { browser = await launchBrowser(); } catch { return t.skip('Playwright not installed'); }
-  try {
-    await assert.rejects(() => makeFigure({ spec: { template: 'nope' }, browser }), /Unknown figure template/);
-  } finally { await browser.close(); }
+  const browser = await browserOrSkip(t);
+  if (!browser) return;
+  await assert.rejects(() => makeFigure({ spec: { template: 'nope' }, browser }), /Unknown figure template/);
 });

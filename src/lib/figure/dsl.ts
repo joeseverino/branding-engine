@@ -24,11 +24,9 @@
 // or // at the start of a line or after a space. Everything compiles to the
 // JSON spec the topology template takes, and every problem in the file is
 // reported at once, with its line number.
-import { isRecord } from '../guards.ts';
 import { checkObject, FigureSpecError, GROUP, LINK, NODE, suggest, validateSpec, type Check } from './schema.ts';
 import type { GroupSpec, LinkDir, LinkSpec, NodeSpec, TopologySpec } from './spec.ts';
 
-/** A parsed `.fig`: a topology spec whose nodes, links and groups are typed. */
 export interface ParsedFig extends TopologySpec {
   nodes: NodeSpec[];
   links: LinkSpec[];
@@ -113,7 +111,7 @@ function splitTop(s: string, sep: string): string[] {
 function stripComment(line: string): string {
   let cut = line.length;
   walkTop(line, (i) => {
-    const start = i === 0 || /\s/.test(line[i - 1]);
+    const start = i === 0 || /\s/.test(line.charAt(i - 1));
     if (start && (line[i] === '#' || line.startsWith('//', i))) { cut = i; return false; }
     return undefined;
   });
@@ -133,7 +131,7 @@ function splitOps(s: string): SplitOps {
   const parts: string[] = [], ops: Operator[] = [];
   let from = 0;
   walkTop(t, (i) => {
-    if (!/\s/.test(t[i])) return undefined;
+    if (!/\s/.test(t.charAt(i))) return undefined;
     for (const op of OPERATORS) {
       const end = i + 1 + op[0].length;
       if (t.startsWith(op[0], i + 1) && /\s/.test(t[end] || '')) {
@@ -147,7 +145,7 @@ function splitOps(s: string): SplitOps {
   });
   parts.push(t.slice(from));
   const trimmed = parts.map((p) => p.trim());
-  return { parts: trimmed, ops, dangling: ops.length > 0 && (!trimmed[0] || !trimmed[trimmed.length - 1]) };
+  return { parts: trimmed, ops, dangling: ops.length > 0 && (!trimmed.at(0) || !trimmed.at(-1)) };
 }
 
 function parseValue(raw: string): unknown {
@@ -160,7 +158,7 @@ function parseValue(raw: string): unknown {
 }
 
 // The keys and flags in a [props] body, without resolving them.
-const propNames = (body: string): string[] => splitTop(body, ',').map((p) => p.trim()).filter(Boolean).map((p) => splitTop(p, ':')[0].trim());
+const propNames = (body: string): string[] => splitTop(body, ',').map((p) => p.trim()).filter(Boolean).map((p) => (splitTop(p, ':')[0] ?? '').trim());
 
 // "[a: 1, b: "x, y", flag]" → { a: 1, b: 'x, y' }, flags resolved for `kind`.
 function parseProps(body: string, kind: Kind, where: string, errors: string[]): Record<string, unknown> {
@@ -169,7 +167,7 @@ function parseProps(body: string, kind: Kind, where: string, errors: string[]): 
   for (const part of splitTop(body, ',')) {
     const p = part.trim();
     if (!p) continue;
-    const [k, ...rest] = splitTop(p, ':');
+    const [k = '', ...rest] = splitTop(p, ':');
     if (rest.length) {
       out[k.trim()] = parseValue(rest.join(':'));
     } else if (flags[p]) {
@@ -294,18 +292,13 @@ export function parseFig(text: string): ParsedFig {
   };
 
   // Group labels, in file order, so a link can name a group declared below it.
-  const groupsByLabel = new Map<string, string[]>();
-  {
-    let seq = 0;
-    for (const raw of text.split(/\r?\n/)) {
-      const t = stripComment(raw).trim();
-      if (!t.endsWith('{') || /^([A-Za-z][A-Za-z0-9]*)\s*:/.test(t)) continue;
-      const label = unquote(peel(t.slice(0, -1))[0]);
-      const ids = groupsByLabel.get(label) ?? [];
-      ids.push(groupId(++seq));
-      groupsByLabel.set(label, ids);
-    }
-  }
+  const groupsByLabel = Map.groupBy(
+    text.split(/\r?\n/)
+      .map((raw) => stripComment(raw).trim())
+      .filter((t) => t.endsWith('{') && !/^([A-Za-z][A-Za-z0-9]*)\s*:/.test(t))
+      .map((t, i) => ({ label: unquote(peel(t.slice(0, -1))[0]), id: groupId(i + 1) })),
+    (group) => group.label,
+  );
   const groupEnds = new Map<string, string>(); // label → first line it was used as a link end
 
   const setDirective = (key: string, val: string, where: string): void => {
@@ -324,7 +317,7 @@ export function parseFig(text: string): ParsedFig {
       if (body !== null) { linkProps = parseProps(body, 'link', where, errors); label = rest; }
     }
     let ops = first;
-    const [, lastBody] = peel(ops.parts[ops.parts.length - 1]);
+    const [, lastBody] = peel(ops.parts.at(-1) ?? '');
     if (lastBody !== null) {
       const names = propNames(lastBody);
       const isLink = (k: string): boolean => k in LINK_PROPS || k in LINK_FLAGS;
@@ -339,20 +332,20 @@ export function parseFig(text: string): ParsedFig {
     }
     checkObject<LinkSpec>(linkProps, LINK_PROPS, `${where}: link`, errors);
     if (ops.dangling) { errors.push(`${where}: a link is missing a node on one side of its arrow`); return; }
-    for (let i = 0; i < ops.ops.length; i++) {
-      const op = ops.ops[i];
-      const froms = splitTop(ops.parts[i], ',').map((s) => s.trim()).filter(Boolean);
-      const tos = splitTop(ops.parts[i + 1], ',').map((s) => s.trim()).filter(Boolean);
+    for (const [i, op] of ops.ops.entries()) {
+      const froms = splitTop(ops.parts[i] ?? '', ',').map((s) => s.trim()).filter(Boolean);
+      const tos = splitTop(ops.parts[i + 1] ?? '', ',').map((s) => s.trim()).filter(Boolean);
       // A bare name that matches a group's label is that group: the link ends
       // at its border.
       const ends = (list: string[]): Array<LinkEnd | null> => list.map((frag) => {
         const [nm, body] = peel(frag);
         const name = unquote(nm);
-        const ids = body === null ? groupsByLabel.get(name) : undefined;
-        if (ids) {
-          if (ids.length > 1) { errors.push(`${where}: ${ids.length} groups are labelled "${name}"; give them different labels to link to one`); return null; }
+        const matches = body === null ? groupsByLabel.get(name) : undefined;
+        if (matches) {
+          const [only, ...others] = matches;
+          if (!only || others.length) { errors.push(`${where}: ${matches.length} groups are labelled "${name}"; give them different labels to link to one`); return null; }
           if (!groupEnds.has(name)) groupEnds.set(name, where);
-          return { id: ids[0], label: name };
+          return { id: only.id, label: name };
         }
         return node(frag, where, { declare: body !== null });
       });
@@ -384,7 +377,7 @@ export function parseFig(text: string): ParsedFig {
     // Directives first: "title: A - B" is a title, not a link.
     const kv = line.match(/^([A-Za-z][A-Za-z0-9]*)\s*:(?!\/\/)\s*(.*)$/);
     if (kv) {
-      const [, name, value] = kv;
+      const [, name = '', value = ''] = kv;
       const key = DIRECTIVES.find((d) => d.toLowerCase() === name.toLowerCase());
       if (key) { setDirective(key, value, where); return; }
       const hint = suggest(name, DIRECTIVES);
@@ -393,8 +386,8 @@ export function parseFig(text: string): ParsedFig {
         : `${where}: "${name}:" is not a directive (${DIRECTIVES.join(', ')}); for a node note use ${name} [note: …]`);
       return;
     }
-    const bare = line.match(/^([A-Za-z]+)\s+(\S+)$/);
-    if (bare && BARE.includes(bare[1]) && !splitOps(line).ops.length) { setDirective(bare[1], bare[2], where); return; }
+    const [, word = '', arg = ''] = line.match(/^([A-Za-z]+)\s+(\S+)$/) ?? [];
+    if (arg && BARE.includes(word) && !splitOps(line).ops.length) { setDirective(word, arg, where); return; }
 
     if (line.endsWith('{')) {
       const [name, body] = peel(line.slice(0, -1));
@@ -408,7 +401,7 @@ export function parseFig(text: string): ParsedFig {
       return;
     }
 
-    const [headRaw, ...labelParts] = splitTop(line, ': ');
+    const [headRaw = '', ...labelParts] = splitTop(line, ': ');
     const ops = splitOps(headRaw);
     if (ops.ops.length) { link(headRaw, labelParts.join(': '), ops, where); return; }
 

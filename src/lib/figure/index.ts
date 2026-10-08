@@ -65,7 +65,6 @@ function classicBody(spec: Exclude<FigureSpec, GraphSpec>, W: number, H: number,
 }
 
 export interface RenderFigureOptions {
-  /** Also write the PNG here. */
   outPath?: string;
   tokens?: Tokens;
   /** Device scale factor of the PNG (default 2). */

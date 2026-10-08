@@ -48,8 +48,10 @@ function star(G: Graph, d: number): void {
   if (needsSlots) {
     const deg = degree(G);
     const degreeOf = (n: GraphNode): number => deg.get(n.id) ?? 0;
-    hub = hub || G.nodes.find((n) => n.role === 'anchor')
-      || [...G.nodes].sort((a, b) => degreeOf(b) - degreeOf(a) || a.index - b.index)[0];
+    hub = required(
+      hub || G.nodes.find((n) => n.role === 'anchor') || G.nodes.toSorted((a, b) => degreeOf(b) - degreeOf(a) || a.index - b.index)[0],
+      'a hub node',
+    );
     const taken = new Set(G.nodes.map((n) => n.pos).filter(Boolean));
     const free = SPOKES.filter((s) => !taken.has(s));
     const spokes = G.nodes.filter((n) => n !== hub && !n.pos);
@@ -106,9 +108,11 @@ function row(G: Graph, d: number): void {
   // Spread a sparse row across the frame at 1:1 instead of letting the fit
   // step blow its text up: 1600 wide less the frame margins.
   const k = G.nodes.length;
-  if (k > 1) {
+  const [first, ...others] = G.nodes;
+  const last = others.at(-1);
+  if (first && last) {
     const half = (n: GraphNode): number => Math.max(nodeExtent(n).w, n.labelSize?.w || 0) / 2;
-    gap = Math.max(gap, (1448 - half(G.nodes[0]) - half(G.nodes[k - 1])) / (k - 1));
+    gap = Math.max(gap, (1448 - half(first) - half(last)) / (k - 1));
   }
   G.nodes.forEach((n, i) => { n.x = i * gap; n.y = 0; });
 }

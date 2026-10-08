@@ -1,64 +1,43 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import test from 'node:test';
 
 import { buildBrand } from '../src/index.ts';
+import { scratch } from './support.ts';
 
-async function filesUnder(root: string, current = root): Promise<string[]> {
-  const entries = await readdir(current, { withFileTypes: true });
-  const files: string[] = [];
-  for (const entry of entries) {
-    const absolute = path.join(current, entry.name);
-    if (entry.isDirectory()) files.push(...await filesUnder(root, absolute));
-    else files.push(path.relative(root, absolute));
-  }
-  return files.sort();
+async function filesUnder(root: string): Promise<string[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries.filter((entry) => entry.isFile()).map((entry) => path.relative(root, path.join(entry.parentPath, entry.name))).sort();
 }
 
-test('committed Severino Labs example matches a fresh full build', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-example-'));
+async function imageShape(bytes: Buffer): Promise<{ format?: string; width?: number; height?: number }> {
+  const { format, width, height } = await sharp(bytes).metadata();
+  return { format, width, height };
+}
+
+test('committed Severino Labs example matches a fresh full build', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  await using dir = await scratch('example');
   const config = path.resolve('examples/severino-labs/brand.json');
   const expected = path.resolve('examples/severino-labs/generated');
 
-  try {
-    await buildBrand({ config, outDir: cwd });
+  await buildBrand({ config, outDir: dir.path });
 
-    const expectedFiles = await filesUnder(expected);
-    const actualFiles = await filesUnder(cwd);
-    assert.deepEqual(actualFiles, expectedFiles);
+  const expectedFiles = await filesUnder(expected);
+  assert.deepEqual(await filesUnder(dir.path), expectedFiles);
 
-    for (const file of expectedFiles) {
-      const actual = await readFile(path.join(cwd, file));
-      const reference = await readFile(path.join(expected, file));
-      const extension = path.extname(file);
+  for (const file of expectedFiles) {
+    const actual = await readFile(path.join(dir.path, file));
+    const reference = await readFile(path.join(expected, file));
+    const extension = path.extname(file);
 
-      if (['.png', '.ico'].includes(extension)) {
-        assert.ok(actual.length > 100, file);
-        if (extension === '.png') {
-          const actualMetadata = await sharp(actual).metadata();
-          const referenceMetadata = await sharp(reference).metadata();
-          assert.deepEqual(
-            {
-              format: actualMetadata.format,
-              width: actualMetadata.width,
-              height: actualMetadata.height,
-            },
-            {
-              format: referenceMetadata.format,
-              width: referenceMetadata.width,
-              height: referenceMetadata.height,
-            },
-            file,
-          );
-        }
-      } else {
-        assert.deepEqual(actual, reference, file);
-      }
+    if (extension === '.png' || extension === '.ico') {
+      assert.ok(actual.length > 100, file);
+      if (extension === '.png') assert.deepEqual(await imageShape(actual), await imageShape(reference), file);
+    } else {
+      assert.deepEqual(actual, reference, file);
     }
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
   }
 });

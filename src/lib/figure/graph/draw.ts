@@ -2,7 +2,7 @@
 // Everything is drawn in layout units inside one stage that the fit transform
 // scales into the canvas.
 import { pictogramGlyphSvg } from '../../pictogram.ts';
-import { union, type Point, type Rect } from '../geom.ts';
+import { segments, union, type Point, type Rect } from '../geom.ts';
 import type { Palette } from '../palette.ts';
 import type { Frame } from './frame.ts';
 import type { BoxNode, CircleNode, Graph, GraphLink } from './model.ts';
@@ -11,14 +11,22 @@ import { boxInnerHtml, boxStyle, chipHtml, colorOf, endLabelHtml, fillOf, groupL
 const f = (v: number): number => Math.round(v * 100) / 100;
 const at = (r: Rect): string => `position:absolute;left:${f(r.x)}px;top:${f(r.y)}px;width:${f(r.w)}px;height:${f(r.h)}px`;
 
-// Polyline with rounded corners, or a smooth curve through the points.
+function* corners(pts: readonly Point[]): Generator<readonly [before: Point, at: Point, after: Point]> {
+  for (const [i, at] of pts.entries()) {
+    const before = pts[i - 1], after = pts[i + 1];
+    if (before && after) yield [before, at, after];
+  }
+}
+
 function pathD(pts: readonly Point[], { rounded, smooth }: { rounded?: boolean; smooth?: boolean }): string {
-  if (pts.length < 2) return '';
+  const [first, second] = pts;
+  if (!first || !second) return '';
+  const last = pts.at(-1) ?? second;
   const P = (p: Point): string => `${f(p.x)} ${f(p.y)}`;
   if (smooth && pts.length > 2) {
-    let d = `M${P(pts[0])}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    let d = `M${P(first)}`;
+    for (const [i, [p1, p2]] of [...segments(pts)].entries()) {
+      const p0 = pts[i - 1] ?? p1, p3 = pts[i + 2] ?? p2;
       const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
       const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
       d += ` C${P(c1)} ${P(c2)} ${P(p2)}`;
@@ -26,16 +34,15 @@ function pathD(pts: readonly Point[], { rounded, smooth }: { rounded?: boolean; 
     return d;
   }
   if (!rounded || pts.length < 3) return `M${pts.map(P).join(' L')}`;
-  let d = `M${P(pts[0])}`;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+  let d = `M${P(first)}`;
+  for (const [a, b, c] of corners(pts)) {
     const l1 = Math.hypot(b.x - a.x, b.y - a.y), l2 = Math.hypot(c.x - b.x, c.y - b.y);
     const r = Math.min(26, l1 / 2, l2 / 2);
     const p = { x: b.x - ((b.x - a.x) / (l1 || 1)) * r, y: b.y - ((b.y - a.y) / (l1 || 1)) * r };
     const q = { x: b.x + ((c.x - b.x) / (l2 || 1)) * r, y: b.y + ((c.y - b.y) / (l2 || 1)) * r };
     d += ` L${P(p)} Q${P(b)} ${P(q)}`;
   }
-  return `${d} L${P(pts[pts.length - 1])}`;
+  return `${d} L${P(last)}`;
 }
 
 function linkSvg(l: GraphLink, c: Palette): string {

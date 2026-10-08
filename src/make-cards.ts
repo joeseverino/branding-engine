@@ -6,7 +6,7 @@ import path from 'node:path';
 import { renderCard, type CardColors } from './lib/card.ts';
 import { withBrowser, type Browser } from './lib/render.ts';
 
-/** One card in a brand config. The text fields are optional and render empty. */
+/** The text fields are optional and render empty. */
 export interface CardSpec {
   file: string;
   width: number;

@@ -166,7 +166,7 @@ export function normalize(spec: GraphSpec): Graph {
   };
 
   const rawLinks: readonly unknown[] = spec.links
-    ?? (layout === 'row' ? nodes.slice(1).map((n, i): LinkSpec => ({ from: nodes[i].id, to: n.id, dir: 'to' })) : []);
+    ?? (layout === 'row' ? nodes.flatMap((from, i): LinkSpec[] => { const to = nodes[i + 1]; return to ? [{ from: from.id, to: to.id, dir: 'to' }] : []; }) : []);
   const links: GraphLink[] = [];
   rawLinks.forEach((entry, i) => {
     const where = `links[${i}]${isRecord(entry) && entry.from ? ` (${String(entry.from)} → ${String(entry.to)})` : ''}`;

@@ -29,14 +29,12 @@ interface NodeBase {
   labelBadge?: boolean;
 }
 
-/** A round device node: a glyph in a ring, its label outside. */
 export interface CircleNode extends NodeBase {
   shape: 'circle';
   d: number;
   icon: PictogramName;
 }
 
-/** A box node: its own label, optionally with a glyph. */
 export interface BoxNode extends NodeBase {
   shape: 'box';
   w: number;

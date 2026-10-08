@@ -2,7 +2,7 @@
 // link, then each node label takes the candidate spot that collides with the
 // least (paths, nodes, chips, other labels) and faces away from its links.
 import { required } from '../../guards.ts';
-import { angleGap, angleOf, inflate, overlapArea, pathHitsRect, pathLength, pointAlong, rect, type Rect, type Size } from '../geom.ts';
+import { angleGap, angleOf, inflate, overlapArea, pathHitsRect, pathLength, pointAlong, rect, segments, type Rect, type Size } from '../geom.ts';
 import type { LabelPos } from '../spec.ts';
 import type { Graph, GraphGroup, GraphLink, GraphNode } from './model.ts';
 import { METRICS } from './parts.ts';
@@ -11,7 +11,6 @@ export const nodeRect = (n: GraphNode): Rect => (n.shape === 'box'
   ? rect(n.x - n.w / 2, n.y - n.h / 2, n.w, n.h)
   : rect(n.x - n.d / 2, n.y - n.d / 2, n.d, n.d));
 
-// The first candidate with the lowest cost.
 function cheapest<T extends { cost: number }>(candidates: readonly T[]): T {
   return candidates.reduce((best, c) => (c.cost < best.cost ? c : best));
 }
@@ -61,16 +60,18 @@ function labelRectAt(n: GraphNode, pos: Spot): { r: Rect; align: Align } {
     case 'sw': return { r: rect(n.x - hw * k - g * 0.4 - w, n.y + hh * k + g * 0.4, w, h), align: 'right' };
     case 'ne': return { r: rect(n.x + hw * k + g * 0.4, n.y - hh * k - g * 0.4 - h, w, h), align: 'left' };
     case 'nw': return { r: rect(n.x - hw * k - g * 0.4 - w, n.y - hh * k - g * 0.4 - h, w, h), align: 'right' };
-    default: return { r: rect(n.x - w / 2, n.y + hh + g, w, h), align: 'center' };
+    case 'below': return { r: rect(n.x - w / 2, n.y + hh + g, w, h), align: 'center' };
   }
 }
 
 function linkAngles(G: Graph, n: GraphNode): number[] {
   const out: number[] = [];
   for (const l of G.links) {
-    if (l.pts.length < 2) continue;
-    if (l.from === n.id) out.push(angleOf(n, l.pts[Math.min(1, l.pts.length - 1)]));
-    if (l.to === n.id) out.push(angleOf(n, l.pts[Math.max(l.pts.length - 2, 0)]));
+    const [, second] = l.pts;
+    const penultimate = l.pts.at(-2);
+    if (!second || !penultimate) continue;
+    if (l.from === n.id) out.push(angleOf(n, second));
+    if (l.to === n.id) out.push(angleOf(n, penultimate));
   }
   return out;
 }
@@ -81,7 +82,7 @@ export function placeLabels(G: Graph): void {
   const chips = G.links.flatMap((l) => (l.chipRect ? [inflate(l.chipRect, 6)] : []));
   const placed: Rect[] = [];
   const deg = (n: GraphNode): number => G.links.filter((l) => l.from === n.id || l.to === n.id).length;
-  const order = [...labelled].sort((a, b) => deg(b) - deg(a) || a.index - b.index);
+  const order = labelled.toSorted((a, b) => deg(b) - deg(a) || a.index - b.index);
 
   for (const n of order) {
     if (n.labelAt) {
@@ -93,7 +94,6 @@ export function placeLabels(G: Graph): void {
     }
     n.labelBadge = false;
     const angles = linkAngles(G, n);
-    // The cost of each candidate spot; a spot on a link costs `linePenalty`.
     const score = (candidates: typeof CANDIDATES, linePenalty: number) => cheapest(candidates.map(([name, dirAngle, pref]) => {
       const { r, align } = labelRectAt(n, name);
       const probe = inflate(r, 8);
@@ -163,8 +163,7 @@ export function placeGroupLabels(G: LabelledGroups, sizes: ReadonlyMap<string, S
     const band = rect(x0, y - 6, Math.max(x1 - x0, 0) + w, h + 12);
     const xs: number[] = [x0];
     for (const l of paths) {
-      for (let i = 1; i < l.pts.length; i++) {
-        const p = l.pts[i - 1], q = l.pts[i];
+      for (const [p, q] of segments(l.pts)) {
         if (!pathHitsRect([p, q], band)) continue;
         xs.push(Math.max(p.x, q.x) + pad + 2);
       }

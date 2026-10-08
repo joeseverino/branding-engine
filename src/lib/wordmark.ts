@@ -57,11 +57,9 @@ function layoutText(text: string, letterSpacingEm: number) {
 }
 
 export interface WordmarkOptions {
-  /** Tile accent fill. */
   tileHex: string;
   /** The name, in the case it is stored. */
   text: string;
-  /** Tile monogram. */
   glyph?: string;
   /** Text fill; pass an explicit color for PNGs. */
   ink?: string;
@@ -69,7 +67,6 @@ export interface WordmarkOptions {
   caps?: boolean;
 }
 
-/** Build the wordmark lockup as a self-contained SVG string. */
 export function wordmarkSvg({ tileHex, text, glyph = 'JS', ink = 'currentColor', caps = false }: WordmarkOptions): string {
   const fill = normalizeHex(tileHex);
   const rendered = caps ? text.toUpperCase() : text;

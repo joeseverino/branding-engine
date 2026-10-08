@@ -1,6 +1,6 @@
 // Spec validation. Every key a spec may carry is declared here, so a typo or a
 // wrong value fails with the path and a suggestion instead of being ignored.
-import { isFiniteNumber, isRecord } from '../guards.ts';
+import { isFiniteNumber, isRecord, required } from '../guards.ts';
 import { isPictogramName, PICTOGRAMS } from '../pictogram.ts';
 import { COLOR_NAMES, isColorName, isDimensions, isSizeName, SIZES } from './palette.ts';
 import {
@@ -80,13 +80,16 @@ const TOP_LEVEL: { readonly [T in TemplateName]: Shape<Of<T>> } = {
 };
 
 function distance(a: string, b: string): number {
-  const m = a.length, n = b.length;
-  const d: number[][] = Array.from({ length: m + 1 }, (_, i) => [i, ...Array<number>(n).fill(0)]);
-  for (let j = 1; j <= n; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
-    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (const [i, ca] of a.split('').entries()) {
+    const next = [i + 1];
+    for (const [j, cb] of b.split('').entries()) {
+      const [diagonal = 0, above = 0] = row.slice(j, j + 2);
+      next.push(Math.min(above + 1, (next.at(-1) ?? 0) + 1, diagonal + (ca === cb ? 0 : 1)));
+    }
+    row = next;
   }
-  return d[m][n];
+  return required(row.at(-1), 'the edit distance');
 }
 
 export function suggest(word: unknown, options: readonly string[]): string | undefined {

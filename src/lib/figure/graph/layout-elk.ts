@@ -3,7 +3,7 @@
 // their measured sizes, so the layout reserves room for every piece of text.
 import elkModule, { type ElkExtendedEdge, type ElkNode, type ElkPort } from 'elkjs/lib/elk.bundled.js';
 import { required } from '../../guards.ts';
-import { rect, rimPoint, type Body, type Point, type Rect } from '../geom.ts';
+import { rect, rimPoint, segments, type Body, type Point, type Rect } from '../geom.ts';
 import type { GraphDirection, GraphRouting } from '../spec.ts';
 import type { GroupPad } from './frame.ts';
 import type { Graph, GraphLink, GraphNode } from './model.ts';
@@ -38,6 +38,8 @@ function rimAlong(n: Body, next: Point, gap: number): Point {
     : { x: n.x, y: n.y + Math.sign(dy) * (half + gap) };
 }
 
+const pointAt = (pts: readonly Point[], i: number): Point => required(pts[i], `point ${i} of a link`);
+
 // Two links whose straight runs share a track and nearly meet end to end read
 // as one line. ELK only spaces runs that overlap, so nudge the later link's
 // inner run sideways. Runs touching an end (the port segments) stay put, and
@@ -46,6 +48,7 @@ type PathLink = Pick<GraphLink, 'pts'>;
 
 interface Run {
   li: number;
+  link: Pick<GraphLink, 'from' | 'to' | 'pts'>;
   i: number;
   vertical: boolean;
   at: number;
@@ -56,10 +59,11 @@ interface Run {
 export function separateTouchingRuns(links: Array<Pick<GraphLink, 'from' | 'to' | 'pts'>>, { gap = 40, shift = 18 } = {}): void {
   const runs: Run[] = [];
   links.forEach((l, li) => {
-    for (let i = 1; i < l.pts.length - 2; i++) {
-      const a = l.pts[i], b = l.pts[i + 1];
+    const inner = [...segments(l.pts)].slice(1, -1);
+    for (const [k, [a, b]] of inner.entries()) {
+      const i = k + 1;
       const vertical = Math.abs(a.x - b.x) < 0.5, horizontal = Math.abs(a.y - b.y) < 0.5;
-      if (vertical || horizontal) runs.push({ li, i, vertical, at: vertical ? a.x : a.y, lo: Math.min(vertical ? a.y : a.x, vertical ? b.y : b.x), hi: Math.max(vertical ? a.y : a.x, vertical ? b.y : b.x) });
+      if (vertical || horizontal) runs.push({ li, link: l, i, vertical, at: vertical ? a.x : a.y, lo: Math.min(vertical ? a.y : a.x, vertical ? b.y : b.x), hi: Math.max(vertical ? a.y : a.x, vertical ? b.y : b.x) });
     }
   });
   const moved = new Set<string>();
@@ -67,17 +71,17 @@ export function separateTouchingRuns(links: Array<Pick<GraphLink, 'from' | 'to' 
     for (const o of runs) {
       if (o.li <= r.li || o.vertical !== r.vertical || moved.has(`${o.li}:${o.i}`)) continue;
       // Links that leave or reach the same node share a trunk on purpose.
-      const A = links[r.li], B = links[o.li];
-      if (A.from === B.from || A.to === B.to) continue;
+      if (r.link.from === o.link.from || r.link.to === o.link.to) continue;
       if (Math.abs(o.at - r.at) > 4) continue;
       const apart = Math.max(o.lo - r.hi, r.lo - o.hi);
       if (apart < 0 || apart > gap) continue; // overlapping runs are ELK's to space
-      const l = links[o.li];
+      const l = o.link;
       const k = o.vertical ? 'x' : 'y';
+      const here = pointAt(l.pts, o.i), next = pointAt(l.pts, o.i + 1);
       // Move away from the other run's far end so the two don't look joined.
-      const dir = l.pts[o.i][k] >= r.at ? 1 : -1;
-      l.pts[o.i] = { ...l.pts[o.i], [k]: l.pts[o.i][k] + dir * shift };
-      l.pts[o.i + 1] = { ...l.pts[o.i + 1], [k]: l.pts[o.i + 1][k] + dir * shift };
+      const dir = here[k] >= r.at ? 1 : -1;
+      l.pts[o.i] = { ...here, [k]: here[k] + dir * shift };
+      l.pts[o.i + 1] = { ...next, [k]: next[k] + dir * shift };
       moved.add(`${o.li}:${o.i}`);
     }
   }
@@ -91,7 +95,8 @@ export function straightenJogs(links: Array<PathLink & Pick<GraphLink, 'chipRect
   for (const l of links) {
     const pts = l.pts;
     for (let i = 1; i < pts.length - 2; i++) {
-      const a = pts[i - 1], b = pts[i], c = pts[i + 1], d = pts[i + 2];
+      const [a, b, c, d] = pts.slice(i - 1, i + 3);
+      if (!a || !b || !c || !d) break;
       const vertical = Math.abs(b.x - c.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(c.y - d.y) < 0.5;
       const horizontal = Math.abs(b.y - c.y) < 0.5 && Math.abs(a.x - b.x) < 0.5 && Math.abs(c.x - d.x) < 0.5;
       if (!vertical && !horizontal) continue;
@@ -100,7 +105,11 @@ export function straightenJogs(links: Array<PathLink & Pick<GraphLink, 'chipRect
       if (!step || Math.abs(step) > tolerance) continue;
       const chip = l.chipRect, size = k === 'y' ? 'h' : 'w';
       if (chip && Math.abs(chip[k] + chip[size] / 2 - c[k]) < 1) l.chipRect = { ...chip, [k]: chip[k] - step };
-      for (let j = i + 1; j < pts.length && Math.abs(pts[j][k] - c[k]) < 0.5; j++) pts[j] = { ...pts[j], [k]: b[k] };
+      for (let j = i + 1; j < pts.length; j++) {
+        const p = pts[j];
+        if (!p || Math.abs(p[k] - c[k]) >= 0.5) break;
+        pts[j] = { ...p, [k]: b[k] };
+      }
       pts.splice(i, 2);
       i = Math.max(0, i - 2);
     }
@@ -131,7 +140,6 @@ function circleEntry(n: { x: number; y: number; d: number }, p: Point, q: Point,
   return { x: p.x + dx * t, y: p.y + dy * t };
 }
 
-/** A link end: a node, or a group border standing in as a box. */
 type End =
   | { kind: 'node'; node: GraphNode }
   | { kind: 'group'; rect: Rect; body: Body };
@@ -295,20 +303,26 @@ export async function layoutElk(
     const section = e?.sections?.[0];
     if (!e || !section) { l.pts = []; continue; }
     const o = abs.get(e.container || 'root') || { x: 0, y: 0 };
-    const pts: Point[] = [section.startPoint, ...(section.bendPoints || []), section.endPoint].map((p) => ({ x: p.x + o.x, y: p.y + o.y }));
-    const n = pts.length;
+    const place = (p: Point): Point => ({ x: p.x + o.x, y: p.y + o.y });
+    const start = place(section.startPoint), end = place(section.endPoint);
+    const bends = (section.bendPoints || []).map(place);
+    const afterStart = bends[0] ?? end;
+    let first: Point, last: Point;
     if (ported) {
       // Ports sit on the rim at a side's midpoint: pull each end back off it.
       // A group's port sits anywhere along its side: keep the line where ELK
       // put it and stop just short of the border.
-      pts[0] = a.kind === 'group' ? borderAlong(a.rect, pts[0], pts[1], 9) : rimAlong(a.node, pts[1], 9);
-      pts[n - 1] = b.kind === 'group' ? borderAlong(b.rect, pts[n - 1], pts[n - 2], 9) : rimAlong(b.node, pts[n - 2], 9);
+      first = a.kind === 'group' ? borderAlong(a.rect, start, afterStart, 9) : rimAlong(a.node, afterStart, 9);
+      const beforeEnd = bends.at(-1) ?? first;
+      last = b.kind === 'group' ? borderAlong(b.rect, end, beforeEnd, 9) : rimAlong(b.node, beforeEnd, 9);
     } else {
       // Free ports land on the bounding square; re-aim each end at the rim.
       const [from, to] = [bodyOf(a), bodyOf(b)];
-      pts[0] = (from.shape === 'circle' && circleEntry(from, pts[1], pts[0], 9)) || rimPoint(from, pts[1]);
-      pts[n - 1] = (to.shape === 'circle' && circleEntry(to, pts[n - 2], pts[n - 1], 9)) || rimPoint(to, pts[n - 2]);
+      first = (from.shape === 'circle' && circleEntry(from, afterStart, start, 9)) || rimPoint(from, afterStart);
+      const beforeEnd = bends.at(-1) ?? first;
+      last = (to.shape === 'circle' && circleEntry(to, beforeEnd, end, 9)) || rimPoint(to, beforeEnd);
     }
+    const pts = [first, ...bends, last];
     l.pts = pts;
     l.smooth = routing === 'SPLINES';
     l.rounded = ported;

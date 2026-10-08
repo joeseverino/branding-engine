@@ -83,12 +83,12 @@ export function tplFlow(spec: Pick<FlowSpec, 'rows'>, W: number, H: number, c: P
     const left = padX + bw / 2;
     const right = W - padX - bw / 2;
     const gap = steps.length > 1 ? (right - left) / (steps.length - 1) : 0;
-    const xs = steps.map((_, si) => (steps.length === 1 ? W / 2 : left + gap * si));
+    const xAt = (si: number): number => (steps.length === 1 ? W / 2 : left + gap * si);
     if (row.label) labels.push(`<div style="position:absolute;left:${padX}px;top:${y - bh / 2 - 44}px;font-size:26px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:${c.eyebrow}">${esc(row.label)}</div>`);
     steps.forEach((label, si) => {
       const variant = row.anchor && row.anchor === label ? 'anchor' : undefined;
-      nodes.push(nodeBox({ x: xs[si], y, w: bw, h: bh, label, variant, fontSize: 30 }, c));
-      if (si > 0) lines.push(seg(xs[si - 1] + bw / 2, y, xs[si] - bw / 2 - 4, y, { arrow: true }));
+      nodes.push(nodeBox({ x: xAt(si), y, w: bw, h: bh, label, variant, fontSize: 30 }, c));
+      if (si > 0) lines.push(seg(xAt(si - 1) + bw / 2, y, xAt(si) - bw / 2 - 4, y, { arrow: true }));
     });
     if (ri > 0) lines.push(seg(W / 2, rowY(ri - 1) + bh / 2 + 14, W / 2, y - bh / 2 - 14, { dashed: true }));
   });
@@ -143,10 +143,10 @@ export function tplNodes(spec: NodesSpec, W: number, H: number, c: Palette): str
   // grid (2 columns) connected to an optional center
   const cols = 2, rows = Math.ceil(items.length / cols);
   const lines: string[] = [], nodes: string[] = [];
-  const gx = [W * 0.26, W * 0.74], padY = H * 0.2, usableH = H - padY * 2;
+  const padY = H * 0.2, usableH = H - padY * 2;
   items.forEach((label, i) => {
     const r = Math.floor(i / cols), col = i % cols;
-    const x = gx[col], y = rows === 1 ? cy : padY + (usableH * r) / (rows - 1);
+    const x = col === 0 ? W * 0.26 : W * 0.74, y = rows === 1 ? cy : padY + (usableH * r) / (rows - 1);
     if (spec.center) lines.push(seg(x + (col === 0 ? bw / 2 : -bw / 2), y, cx, cy));
     nodes.push(nodeBox({ x, y, w: bw, h: bh, label, fontSize: 34 }, c));
   });

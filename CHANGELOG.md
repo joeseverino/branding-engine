@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- The CLI parses flags with `node:util` `parseArgs`. `--flag=value` is accepted,
+  `--no-circle-preview` is the negated form of `--circle-preview`, and an
+  unrecognized flag exits 1 with `Unknown flag --name.`. Other flags, messages
+  and exit codes are unchanged.
+- The compiler runs with `noUncheckedIndexedAccess`, `noUnusedLocals` and
+  `noUnusedParameters`, without assertions or casts. The build targets ES2025 and
+  does not load the DOM library; the page callbacks declare the part of
+  `document` they read.
+- The glyph extractor, OpenType.js and the WOFF2 decoder load when a glyph cache
+  has to be written; builds that read the bundled caches do not load them.
+- Internals use platform features: `import.meta.dirname`, `Map.groupBy`,
+  `toSorted`, `Array.fromAsync`, error `cause` and `fs.globSync`. The build
+  cleans `dist/` with a Node script, so `npm run build` runs on any platform.
+  `package.json` declares `sideEffects: false` and omits `publishConfig`.
+- Tests use `await using` temp directories, `t.mock` and `t.after`, and a
+  compile-time check keeps the hand-written `Browser` interface compatible with
+  Playwright's.
 - The source is TypeScript under strict settings. The package now ships compiled
   JavaScript and type declarations in `dist/`, and the `bin` entry is
   `dist/cli.js`. CLI behavior, flags, the config schema, the library exports and

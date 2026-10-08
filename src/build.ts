@@ -132,9 +132,9 @@ export async function buildKit({
   const stages = stageSet(only);
   const glyph = normalizeGlyph(glyphOption);
 
-  // A custom font points the caches at font-specific files and pre-extracts the
-  // mark glyphs for this identity. The default font uses bundled caches; custom
-  // fonts are extracted in Node. makeWordmark manages its own cache.
+  // A custom font gets its own cache files so the bundled Inter set is never
+  // overwritten; its mark glyphs are extracted up front. makeWordmark manages
+  // its own cache.
   const abs = font ? path.resolve(process.cwd(), font) : undefined;
   const stem = abs ? path.basename(abs).replace(/\.[^.]+$/, '') : undefined;
   const env = {

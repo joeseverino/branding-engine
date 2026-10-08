@@ -10,13 +10,11 @@
 // itself is never written to.
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { extractGlyphs, type Glyph, type GlyphSet } from './extract-glyphs.ts';
+import type { Glyph, GlyphSet } from './extract-glyphs.ts';
 import { DEFAULT_FONT, fontPath } from './font.ts';
 import { isFiniteNumber, isRecord, parseJson } from './guards.ts';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLED_DIR = path.resolve(here, '..', '..', 'assets', 'glyphs');
+const BUNDLED_DIR = path.resolve(import.meta.dirname, '..', '..', 'assets', 'glyphs');
 
 function cacheDir(): string {
   return process.env.BRAND_CACHE_DIR || path.join(process.cwd(), '.brand-cache');
@@ -100,6 +98,7 @@ export async function ensureGlyphs({ file, font = fontPath(), weight, chars, lab
   const charset = [...new Set(chars)].join('');
   mkdirSync(dir, { recursive: true });
   console.log(`Extracting ${label} "${charset}" @ ${weight} from ${path.basename(font)}`);
+  const { extractGlyphs } = await import('./extract-glyphs.ts');
   await extractGlyphs({ chars: charset, weight, fontPath: font, outPath: out });
 }
 

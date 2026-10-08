@@ -1,5 +1,6 @@
 // Plain 2D geometry for figure layout. Rects are { x, y, w, h } with a top-left
 // origin; points are { x, y }.
+import { required } from '../guards.ts';
 
 export interface Point {
   x: number;
@@ -58,26 +59,39 @@ export function segmentHitsRect(p: Point, q: Point, r: Rect): boolean {
   return true;
 }
 
-export const pathHitsRect = (pts: readonly Point[], r: Rect): boolean =>
-  pts.some((p, i) => i > 0 && segmentHitsRect(pts[i - 1], p, r));
+export function* segments(pts: readonly Point[]): Generator<readonly [from: Point, to: Point]> {
+  let prev: Point | undefined;
+  for (const p of pts) {
+    if (prev) yield [prev, p];
+    prev = p;
+  }
+}
 
-export const pathLength = (pts: readonly Point[]): number =>
-  pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
+export function pathHitsRect(pts: readonly Point[], r: Rect): boolean {
+  for (const [p, q] of segments(pts)) if (segmentHitsRect(p, q, r)) return true;
+  return false;
+}
 
-// The point at fraction t of a polyline's length, plus the unit direction there.
+export function pathLength(pts: readonly Point[]): number {
+  let sum = 0;
+  for (const [a, b] of segments(pts)) sum += Math.hypot(b.x - a.x, b.y - a.y);
+  return sum;
+}
+
 export function pointAlong(pts: readonly Point[], t: number): PathPoint {
   const total = pathLength(pts) || 1;
   let left = total * t;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
+  const legs = [...segments(pts)];
+  for (const [i, [a, b]] of legs.entries()) {
     const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (left <= len || i === pts.length - 1) {
+    if (left <= len || i === legs.length - 1) {
       const f = len ? Math.min(left / len, 1) : 0;
       return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, ux: len ? (b.x - a.x) / len : 1, uy: len ? (b.y - a.y) / len : 0 };
     }
     left -= len;
   }
-  return { x: pts[0].x, y: pts[0].y, ux: 1, uy: 0 };
+  const first = required(pts[0], 'a path with at least one point');
+  return { x: first.x, y: first.y, ux: 1, uy: 0 };
 }
 
 // Where a ray from a node's center toward `to` leaves the node, plus `gap`.

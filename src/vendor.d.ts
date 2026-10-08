@@ -1,6 +1,13 @@
 // Ambient types for the two dependencies that ship none. Only the surface the
 // glyph extractor reads is declared.
 
+// The `evaluate` callbacks run in the browser, so `document` is declared with only
+// what they read instead of loading the DOM library into a Node program.
+declare const document: {
+  readonly fonts: { readonly ready: Promise<unknown> };
+  querySelectorAll(selector: string): Iterable<{ getBoundingClientRect(): { readonly width: number; readonly height: number } }>;
+};
+
 declare module 'opentype.js' {
   interface BoundingBox {
     x1: number;

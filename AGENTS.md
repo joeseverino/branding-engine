@@ -29,7 +29,9 @@ precedes `npm test`. Node does not strip types inside `node_modules`, so the
 package ships `dist/`, never `.ts`. Keep relative imports ending in `.ts`
 (`rewriteRelativeImportExtensions` turns them into `.js`), use only erasable
 syntax (no `enum`, no parameter properties), and keep `any`, `@ts-*` and
-silencing casts out of `src/`.
+silencing casts out of `src/`. `noUncheckedIndexedAccess`, `noUnusedLocals` and
+`noUnusedParameters` are on: narrow an indexed read with destructuring, `.at()`,
+`entries()` or `required()` (`src/lib/guards.ts`), never `!`.
 
 The browser-free path needs no Chromium. The `sheet` and `cards` stages and
 `test/browser.test.ts` need Playwright Chromium:
@@ -63,7 +65,11 @@ npm i -D @playwright/test && npx playwright install chromium
 - `test/`: `smoke.test.ts`, `regressions.test.ts` and `cli.test.ts` (browser-free),
   `browser.test.ts` (snapshot), `figure.test.ts` and `figure-graph.test.ts` (DSL,
   validation, layout, placement, fit, render).
-- `scripts/rewrite-declarations.ts`: build step that points `dist/**/*.d.ts` at `.js`.
+- `scripts/clean.ts` and `scripts/rewrite-declarations.ts`: build steps that empty `dist/`
+  portably and point `dist/**/*.d.ts` at `.js`.
+- `test/support.ts`: `scratch()` (self-removing temp dir for `await using`), `setEnv()` and
+  `browserOrSkip()`; `test/playwright-compat.ts` is a compile-time check that Playwright's
+  `Browser` satisfies the hand-written one in `src/lib/render.ts`.
 
 ## Conventions & gotchas
 

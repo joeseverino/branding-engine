@@ -13,7 +13,7 @@ export interface GroupPad {
 
 export function groupRectsGeo(G: Graph, pad: GroupPad): void {
   const depth = (g: GraphGroup): number => { let d = 0; for (let p = g.parent; p; p = G.groups.find((x) => x.id === p)?.parent) d++; return d; };
-  const order = [...G.groups].sort((a, b) => depth(b) - depth(a));
+  const order = G.groups.toSorted((a, b) => depth(b) - depth(a));
   for (const g of order) {
     const members = G.nodes.filter((n) => n.group === g.id).flatMap((n) => [nodeRect(n), n.labelRect]);
     const kids = G.groups.filter((k) => k.parent === g.id).map((k) => k.rect);
@@ -77,11 +77,10 @@ export function collectWarnings(G: Graph, s: number): string[] {
   const name = (n: GraphNode): string => `"${n.label.split('\n')[0]}"`;
   const lname = (l: { from: string; to: string }): string => `${l.from} → ${l.to}`;
   const labels = G.nodes.flatMap((n) => (n.labelRect ? [{ n, r: n.labelRect }] : []));
-  for (let i = 0; i < labels.length; i++) {
-    for (let j = i + 1; j < labels.length; j++) {
-      if (overlapArea(labels[i].r, labels[j].r) > 4) warn.push(`labels ${name(labels[i].n)} and ${name(labels[j].n)} overlap`);
+  for (const [i, { n, r }] of labels.entries()) {
+    for (const other of labels.slice(i + 1)) {
+      if (overlapArea(r, other.r) > 4) warn.push(`labels ${name(n)} and ${name(other.n)} overlap`);
     }
-    const { n, r } = labels[i];
     const probe = inflate(r, -2);
     if (!n.labelBadge) for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) warn.push(`label ${name(n)} crosses link ${lname(l)}`);
     for (const o of G.nodes) if (o !== n && overlapArea(probe, nodeRect(o)) > 4) warn.push(`label ${name(n)} overlaps node ${name(o)}`);

@@ -52,11 +52,9 @@ export function pictogramGlyphSvg(name: PictogramName, size: number, color: stri
 export interface PictogramOptions {
   /** A key of PICTOGRAMS. */
   glyph: string;
-  /** Tile fill. */
   hex: string;
   size?: number;
   radius?: number;
-  /** Stroke color of the glyph. */
   color?: string;
   strokeWidth?: number;
   /** Glyph box as a share of the tile. */

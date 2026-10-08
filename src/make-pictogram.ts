@@ -92,7 +92,6 @@ interface TileOptions {
   circlePreview: boolean;
 }
 
-/** The files one colorway wrote. */
 export interface PictogramFiles {
   png: string;
   /** Vector-native tiles (glyph, text) also write an SVG. */
@@ -180,7 +179,6 @@ export interface PictogramInput {
   /** Write `<name>-circle.png`; defaults on for logo tiles. */
   circlePreview?: boolean;
   tokens?: Tokens;
-  /** A tokens.css to read brand colors from. */
   tokensPath?: string;
 }
 
@@ -284,15 +282,11 @@ function readEntry(raw: unknown, where: string): PictogramInput {
 }
 
 // Render a batch from a spec: an array of makePictogram inputs.
-export async function makePictograms({ spec, outDir = '.', tokensPath }: { spec: unknown; outDir?: string; tokensPath?: string }): Promise<Array<PictogramFiles | PictogramVariants>> {
+export function makePictograms({ spec, outDir = '.', tokensPath }: { spec: unknown; outDir?: string; tokensPath?: string }): Promise<Array<PictogramFiles | PictogramVariants>> {
   if (!Array.isArray(spec) || spec.length === 0) {
     throw new Error(
       'Pictogram spec must be a non-empty array of { glyph | text | logo, hex, ... } entries.',
     );
   }
-  const written: Array<PictogramFiles | PictogramVariants> = [];
-  for (const [i, entry] of spec.entries()) {
-    written.push(await makePictogram({ tokensPath, outDir, ...readEntry(entry, `spec[${i}]`) }));
-  }
-  return written;
+  return Array.fromAsync(spec.entries(), ([i, entry]) => makePictogram({ tokensPath, outDir, ...readEntry(entry, `spec[${i}]`) }));
 }

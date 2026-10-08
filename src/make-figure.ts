@@ -43,7 +43,6 @@ export interface MakeFigureOptions {
   /** PNG path; defaults to the spec file with a .png extension. */
   out?: string;
   tokens?: Tokens;
-  /** A tokens.css to read brand colors from. */
   tokensPath?: string;
   /** Device scale factor (default 2). */
   scale?: number;

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -13,6 +12,7 @@ import {
   renderMarkSet,
 } from '../src/index.ts';
 import { extractGlyphs } from '../src/lib/extract-glyphs.ts';
+import { scratch, setEnv } from './support.ts';
 
 test('normalizeGlyph accepts 1-3 alphanumeric characters and uppercases letters', () => {
   assert.equal(normalizeGlyph('a'), 'A');
@@ -57,134 +57,117 @@ test('renderMarkSet emits one reusable browser and brand asset contract', async 
 });
 
 test('extractGlyphs creates a cache entirely in Node', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-glyphs-'));
+  await using tmp = await scratch('glyphs');
+  const cwd = tmp.path;
   const outPath = path.join(cwd, 'glyphs.json');
   const fontPath = path.resolve('assets/fonts/inter/inter-variable-latin.woff2');
 
-  try {
-    const data = await extractGlyphs({
-      chars: 'A3 ',
-      weight: 800,
-      fontPath,
-      outPath,
-    });
-    const written = JSON.parse(await readFile(outPath, 'utf8'));
+  const data = await extractGlyphs({
+    chars: 'A3 ',
+    weight: 800,
+    fontPath,
+    outPath,
+  });
+  const written = JSON.parse(await readFile(outPath, 'utf8'));
 
-    assert.equal(data.font, 'inter-variable-latin.woff2');
-    assert.deepEqual(Object.keys(written.glyphs), ['3', 'A', ' ']);
-    assert.match(written.glyphs.A.path, /^M/);
-    assert.ok(written.glyphs.A.advance > 0);
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
-  }
+  assert.equal(data.font, 'inter-variable-latin.woff2');
+  assert.deepEqual(Object.keys(written.glyphs), ['3', 'A', ' ']);
+  assert.match(written.glyphs.A.path, /^M/);
+  assert.ok(written.glyphs.A.advance > 0);
 });
 
-test('buildKit extracts and uses a custom WOFF2 font without Python', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-custom-font-'));
+test('buildKit extracts and uses a custom WOFF2 font without Python', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  await using tmp = await scratch('custom-font');
+  const cwd = tmp.path;
   const font = path.join(cwd, 'custom-inter.woff2');
   const cache = path.join(cwd, 'cache');
   const outDir = path.join(cwd, 'output');
-  const previousCache = process.env.BRAND_CACHE_DIR;
 
-  try {
-    await copyFile(path.resolve('assets/fonts/inter/inter-variable-latin.woff2'), font);
-    process.env.BRAND_CACHE_DIR = cache;
-    await buildKit({
-      slug: 'custom',
-      hex: '#635BFF',
-      glyph: 'A3X',
-      font,
-      outDir,
-      only: 'mark',
-      weight: 800,
-    });
+  await copyFile(path.resolve('assets/fonts/inter/inter-variable-latin.woff2'), font);
+  setEnv(t, 'BRAND_CACHE_DIR', cache);
+  await buildKit({
+    slug: 'custom',
+    hex: '#635BFF',
+    glyph: 'A3X',
+    font,
+    outDir,
+    only: 'mark',
+    weight: 800,
+  });
 
-    const data = JSON.parse(await readFile(path.join(cache, 'custom-inter-glyphs.json'), 'utf8'));
-    const mark = await readFile(path.join(outDir, 'custom/mark/mark.svg'), 'utf8');
+  const data = JSON.parse(await readFile(path.join(cache, 'custom-inter-glyphs.json'), 'utf8'));
+  const mark = await readFile(path.join(outDir, 'custom/mark/mark.svg'), 'utf8');
 
-    assert.equal(data.weight, 800);
-    assert.deepEqual(Object.keys(data.glyphs), ['3', 'A', 'X']);
-    assert.equal((mark.match(/<path /g) || []).length, 3);
-  } finally {
-    if (previousCache === undefined) delete process.env.BRAND_CACHE_DIR;
-    else process.env.BRAND_CACHE_DIR = previousCache;
-    await rm(cwd, { recursive: true, force: true });
-  }
+  assert.equal(data.weight, 800);
+  assert.deepEqual(Object.keys(data.glyphs), ['3', 'A', 'X']);
+  assert.equal((mark.match(/<path /g) || []).length, 3);
 });
 
 test('generateSite writes the expected browser-free assets', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-'));
+  await using tmp = await scratch('');
+  const cwd = tmp.path;
 
-  try {
-    await writeFile(
-      path.join(cwd, 'brand.config.json'),
-      JSON.stringify({ name: 'Brand Engine', accent: '#2563eb', glyph: 'a3x' }),
-    );
+  await writeFile(
+    path.join(cwd, 'brand.config.json'),
+    JSON.stringify({ name: 'Brand Engine', accent: '#2563eb', glyph: 'a3x' }),
+  );
 
-    const result = await generateSite({ cwd });
-    const manifest = JSON.parse(await readFile(path.join(cwd, 'public/site.webmanifest'), 'utf8'));
-    const favicon = await readFile(path.join(cwd, 'public/favicon.svg'), 'utf8');
-    const tokens = await readFile(path.join(cwd, 'public/brand-tokens.css'), 'utf8');
+  const result = await generateSite({ cwd });
+  const manifest = JSON.parse(await readFile(path.join(cwd, 'public/site.webmanifest'), 'utf8'));
+  const favicon = await readFile(path.join(cwd, 'public/favicon.svg'), 'utf8');
+  const tokens = await readFile(path.join(cwd, 'public/brand-tokens.css'), 'utf8');
 
-    assert.equal(result.written.length, 7);
-    assert.equal(manifest.name, 'Brand Engine');
-    assert.equal(manifest.short_name, 'A3X');
-    assert.equal(manifest.theme_color, '#2563eb');
-    assert.equal((favicon.match(/<path /g) || []).length, 3);
-    assert.match(tokens, /--brand-accent: #2563eb;/);
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
-  }
+  assert.equal(result.written.length, 7);
+  assert.equal(manifest.name, 'Brand Engine');
+  assert.equal(manifest.short_name, 'A3X');
+  assert.equal(manifest.theme_color, '#2563eb');
+  assert.equal((favicon.match(/<path /g) || []).length, 3);
+  assert.match(tokens, /--brand-accent: #2563eb;/);
 });
 
 test('initSite scaffolds an Astro or plain-site project without replacing existing scripts', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-site-'));
+  await using tmp = await scratch('site');
+  const cwd = tmp.path;
 
-  try {
-    await writeFile(
-      path.join(cwd, 'package.json'),
-      JSON.stringify({
-        name: 'example-site',
-        scripts: { build: 'astro build' },
-      }),
-    );
+  await writeFile(
+    path.join(cwd, 'package.json'),
+    JSON.stringify({
+      name: 'example-site',
+      scripts: { build: 'astro build' },
+    }),
+  );
 
-    const result = initSite({ cwd });
-    const config = JSON.parse(await readFile(path.join(cwd, 'brand.config.json'), 'utf8'));
-    const pkg = JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8'));
+  const result = initSite({ cwd });
+  const config = JSON.parse(await readFile(path.join(cwd, 'brand.config.json'), 'utf8'));
+  const pkg = JSON.parse(await readFile(path.join(cwd, 'package.json'), 'utf8'));
 
-    assert.deepEqual(result.created, [
-      'brand.config.json',
-      'package.json ("brand" script)',
-    ]);
-    assert.equal(config.glyph, 'MS');
-    assert.equal(pkg.scripts.build, 'astro build');
-    assert.equal(pkg.scripts.brand, 'branding-engine generate');
-    assert.match(result.headSnippet, /href="\/site\.webmanifest"/);
-    assert.match(result.headSnippet, /href="\/brand-tokens\.css"/);
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
-  }
+  assert.deepEqual(result.created, [
+    'brand.config.json',
+    'package.json ("brand" script)',
+  ]);
+  assert.equal(config.glyph, 'MS');
+  assert.equal(pkg.scripts.build, 'astro build');
+  assert.equal(pkg.scripts.brand, 'branding-engine generate');
+  assert.match(result.headSnippet, /href="\/site\.webmanifest"/);
+  assert.match(result.headSnippet, /href="\/brand-tokens\.css"/);
 });
 
 test('generateSite supports a root-level public directory for plain HTML sites', async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), 'branding-engine-plain-'));
+  await using tmp = await scratch('plain');
+  const cwd = tmp.path;
 
-  try {
-    await writeFile(
-      path.join(cwd, 'brand.config.json'),
-      JSON.stringify({ name: 'Plain Site', accent: '#6D5EF7', glyph: 'PS' }),
-    );
+  await writeFile(
+    path.join(cwd, 'brand.config.json'),
+    JSON.stringify({ name: 'Plain Site', accent: '#6D5EF7', glyph: 'PS' }),
+  );
 
-    await generateSite({ cwd, publicDir: '.' });
+  await generateSite({ cwd, publicDir: '.' });
 
-    const manifest = JSON.parse(await readFile(path.join(cwd, 'site.webmanifest'), 'utf8'));
-    const tokens = await readFile(path.join(cwd, 'brand-tokens.css'), 'utf8');
-    assert.equal(manifest.name, 'Plain Site');
-    assert.match(tokens, /--brand-accent: #6D5EF7;/);
-  } finally {
-    await rm(cwd, { recursive: true, force: true });
-  }
+  const manifest = JSON.parse(await readFile(path.join(cwd, 'site.webmanifest'), 'utf8'));
+  const tokens = await readFile(path.join(cwd, 'brand-tokens.css'), 'utf8');
+  assert.equal(manifest.name, 'Plain Site');
+  assert.match(tokens, /--brand-accent: #6D5EF7;/);
 });
 
 test('pictogramSvg renders a tile and rejects unknown glyphs', async () => {
@@ -198,51 +181,45 @@ test('pictogramSvg renders a tile and rejects unknown glyphs', async () => {
 
 test('makePictograms writes svg + png per spec entry', async () => {
   const { isPictogramFiles, makePictograms } = await import('../src/index.ts');
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-'));
-  try {
-    const written = await makePictograms({
-      spec: [
-        { glyph: 'home', hex: '#1E3A8A' },
-        { glyph: 'server', hex: '#1E3A8A', name: 'rack', size: 256 },
-      ],
-      outDir: dir,
-    });
-    assert.equal(written.length, 2);
-    const [home, rack] = written;
-    assert.ok(home && isPictogramFiles(home) && rack && isPictogramFiles(rack));
-    assert.match(home.png, /home-512\.png$/);
-    assert.match(rack.png, /rack-256\.png$/);
-    const png = await readFile(rack.png);
-    assert.equal(png[1], 0x50); // 'P' of the PNG magic
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  await using tmp = await scratch('pictogram');
+  const dir = tmp.path;
+  const written = await makePictograms({
+    spec: [
+      { glyph: 'home', hex: '#1E3A8A' },
+      { glyph: 'server', hex: '#1E3A8A', name: 'rack', size: 256 },
+    ],
+    outDir: dir,
+  });
+  assert.equal(written.length, 2);
+  const [home, rack] = written;
+  assert.ok(home && isPictogramFiles(home) && rack && isPictogramFiles(rack));
+  assert.match(home.png, /home-512\.png$/);
+  assert.match(rack.png, /rack-256\.png$/);
+  const png = await readFile(rack.png);
+  assert.equal(png[1], 0x50);
 });
 
 test('makePictogram composites a logo file and writes a circle preview', async () => {
   const { makePictogram } = await import('../src/index.ts');
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-logo-'));
-  try {
-    const logoPath = path.join(dir, 'logo.svg');
-    await writeFile(
-      logoPath,
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" fill="#e00"/></svg>',
-    );
-    const written = await makePictogram({
-      logo: logoPath,
-      hex: '#ffffff',
-      name: 'brand',
-      outDir: dir,
-      circlePreview: true,
-    });
-    assert.match(written.png, /brand-512\.png$/);
-    assert.match(written.circle ?? '', /brand-circle\.png$/);
-    assert.equal(written.svg, undefined); // logo tiles are raster-only
-    const png = await readFile(written.png);
-    assert.equal(png[1], 0x50);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  await using tmp = await scratch('pictogram-logo');
+  const dir = tmp.path;
+  const logoPath = path.join(dir, 'logo.svg');
+  await writeFile(
+    logoPath,
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" fill="#e00"/></svg>',
+  );
+  const written = await makePictogram({
+    logo: logoPath,
+    hex: '#ffffff',
+    name: 'brand',
+    outDir: dir,
+    circlePreview: true,
+  });
+  assert.match(written.png, /brand-512\.png$/);
+  assert.match(written.circle ?? '', /brand-circle\.png$/);
+  assert.equal(written.svg, undefined); // logo tiles are raster-only
+  const png = await readFile(written.png);
+  assert.equal(png[1], 0x50);
 });
 
 test('makePictogram rejects glyph+logo together and missing logo files', async () => {
@@ -262,26 +239,23 @@ test('makePictogram renders text tiles, token colors, and variant pairs', async 
   assert.equal(resolveColor('accent'), '#1E3A8A');
   assert.throws(() => resolveColor('mauve'), /Unknown color/);
 
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-text-'));
-  try {
-    const pair = await makePictogram({
-      text: 'HQ',
-      hex: 'accent',
-      outDir: dir,
-      variants: ['light', 'dark'],
-      circlePreview: true,
-    });
-    const { light, dark } = pair;
-    assert.ok(light?.svg && dark?.circle);
-    assert.match(light.png, /hq-light-512\.png$/);
-    assert.match(dark.png, /hq-dark-512\.png$/);
-    assert.ok(light.svg.endsWith('hq-light.svg'));
-    assert.ok(dark.circle.endsWith('hq-dark-circle.png'));
-    const lightSvg = await readFile(light.svg, 'utf8');
-    assert.match(lightSvg, /fill="#ffffff"/); // paper tile
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  await using tmp = await scratch('pictogram-text');
+  const dir = tmp.path;
+  const pair = await makePictogram({
+    text: 'HQ',
+    hex: 'accent',
+    outDir: dir,
+    variants: ['light', 'dark'],
+    circlePreview: true,
+  });
+  const { light, dark } = pair;
+  assert.ok(light?.svg && dark?.circle);
+  assert.match(light.png, /hq-light-512\.png$/);
+  assert.match(dark.png, /hq-dark-512\.png$/);
+  assert.ok(light.svg.endsWith('hq-light.svg'));
+  assert.ok(dark.circle.endsWith('hq-dark-circle.png'));
+  const lightSvg = await readFile(light.svg, 'utf8');
+  assert.match(lightSvg, /fill="#ffffff"/);
 });
 
 test('makePictogram tints monochrome logos and defaults circle preview on', async () => {
@@ -292,26 +266,23 @@ test('makePictogram tints monochrome logos and defaults circle preview on', asyn
   );
   assert.match(tintSvg('<svg fill="none"><path fill="#FFF"/></svg>', '#0086ea'), /fill="none"/);
 
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'pictogram-tint-'));
-  try {
-    const logoPath = path.join(dir, 'logo.svg');
-    await writeFile(
-      logoPath,
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="#FFF"/></svg>',
-    );
-    const one = await makePictogram({ logo: logoPath, hex: 'paper', tint: 'accent', outDir: dir });
-    assert.ok(one.circle, 'logo tiles default to writing a circle preview');
+  await using tmp = await scratch('pictogram-tint');
+  const dir = tmp.path;
+  const logoPath = path.join(dir, 'logo.svg');
+  await writeFile(
+    logoPath,
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="#FFF"/></svg>',
+  );
+  const one = await makePictogram({ logo: logoPath, hex: 'paper', tint: 'accent', outDir: dir });
+  assert.ok(one.circle, 'logo tiles default to writing a circle preview');
 
-    const pair = await makePictogram({
-      logo: logoPath, hex: 'deep', tint: 'deep', outDir: dir, variants: 'light,dark', name: 'mark',
-    });
-    assert.ok(pair.dark);
-    assert.match(pair.dark.png, /mark-dark-512\.png$/);
-    await assert.rejects(
-      () => makePictogram({ logo: logoPath, hex: 'deep', outDir: dir, variants: ['dark'] }),
-      /require --tint/,
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  const pair = await makePictogram({
+    logo: logoPath, hex: 'deep', tint: 'deep', outDir: dir, variants: 'light,dark', name: 'mark',
+  });
+  assert.ok(pair.dark);
+  assert.match(pair.dark.png, /mark-dark-512\.png$/);
+  await assert.rejects(
+    () => makePictogram({ logo: logoPath, hex: 'deep', outDir: dir, variants: ['dark'] }),
+    /require --tint/,
+  );
 });

@@ -60,19 +60,16 @@ function layout(glyph: string) {
 }
 
 export interface MarkOptions {
-  /** Square canvas size. */
   size?: number;
   /** Rounded-square tile (false = full square). */
   rounded?: boolean;
   /** Tile fill, or null/undefined for transparent. */
   bg?: string | null;
-  /** Glyph fill. */
   fg?: string;
   /** 1-3 alphanumeric mark characters. */
   glyph?: string;
 }
 
-/** Build the mark as a self-contained SVG string. */
 export function markSvg({ size = 512, rounded = true, bg, fg = '#ffffff', glyph = 'JS' }: MarkOptions = {}): string {
   const normalizedGlyph = normalizeGlyph(glyph);
   const { placed, count, cx, cy, gw, gh } = layout(normalizedGlyph);

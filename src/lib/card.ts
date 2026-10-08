@@ -30,7 +30,6 @@ export interface CardOptions {
   outPath: string;
 }
 
-/** Render a card to a PNG on the given (caller-owned) browser. */
 export async function renderCard(browser: Browser, o: CardOptions): Promise<void> {
   const c = o.colors;
   const photoB64 = readFileSync(o.photoPath).toString('base64');

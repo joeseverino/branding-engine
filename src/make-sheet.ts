@@ -17,7 +17,7 @@ const b64 = (s: string): string => Buffer.from(s).toString('base64');
 
 // "inter-variable-latin.woff2" -> "Inter"; "Arial Unicode.ttf" -> "Arial".
 function prettyFont(file: string): string {
-  const stem = file.replace(/\.[^.]+$/, '').split(/[-_ ]/)[0];
+  const [stem = ''] = file.replace(/\.[^.]+$/, '').split(/[-_ ]/);
   return stem.charAt(0).toUpperCase() + stem.slice(1);
 }
 

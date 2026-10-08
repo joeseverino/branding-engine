@@ -11,6 +11,16 @@ Node.js 24 or newer is required. The source is TypeScript, and tests run it
 directly through Node's type stripping, so there is no build step before
 `npm test`. Browser-free tests do not require Playwright or Chromium.
 
+The compiler runs with `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`
+and `noUnusedParameters`. Index into arrays with destructuring, `.at()`,
+`entries()` or `required()` from `src/lib/guards.ts`, not with `!`, `as` or
+`any`. Prefer the platform to hand-written helpers: `util.parseArgs`,
+`import.meta.dirname`, `Map.groupBy`, `toSorted`, `Array.fromAsync`.
+
+Tests share `test/support.ts`: `scratch()` is a temp directory removed when the
+test ends (`await using dir = await scratch('name')`), `setEnv()` restores an
+environment variable, and `browserOrSkip()` launches Chromium or skips the test.
+
 ## Source and Build Layout
 
 | Path | Holds |
@@ -27,7 +37,7 @@ imports in `src/` end in `.ts`; the build rewrites them to `.js`.
 | Command | Does |
 |---|---|
 | `npm run typecheck` | Type-check `src/`, `test/` and `scripts/` with strict settings |
-| `npm run build` | Compile `src/` into `dist/` and point the declarations at `.js` |
+| `npm run build` | Clean `dist/`, compile `src/` into it, and point the declarations at `.js` (no POSIX shell needed) |
 | `npm test` | Run every test (the example snapshot needs Chromium) |
 | `npm run test:core` | Run the browser-free tests |
 | `npm run check` | Typecheck, build, test, and `npm pack --dry-run` |

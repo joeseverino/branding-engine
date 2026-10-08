@@ -1,15 +1,13 @@
-// Brand config: the brand.json (plus optional surfaces.json) that `build` reads,
-// validated up front so a bad file fails with every problem named instead of a
-// TypeError deep in a renderer.
+// Brand config (brand.json plus an optional surfaces.json), validated up front
+// so a bad file reports every problem at once.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { isFiniteNumber, isRecord, parseJson, type JsonObject } from './lib/guards.ts';
+import { errorMessage, isFiniteNumber, isRecord, parseJson, type JsonObject } from './lib/guards.ts';
 import type { CardSpec } from './make-cards.ts';
 
 export type { CardSpec };
 
 export interface Identity {
-  /** Output directory name. */
   slug: string;
   /** Six-digit accent color. */
   color: string;
@@ -127,7 +125,7 @@ function readCard(raw: unknown, where: string, p: Problems): CardSpec | undefine
   return card;
 }
 
-/** Validate a parsed brand config; `source` names where it came from. */
+/** `source` names where the config came from, for error messages. */
 function parseBrandConfig(raw: unknown, source: string): BrandConfig {
   const p = new Problems();
   const root = p.object(raw, 'config');
@@ -200,7 +198,7 @@ function readJson(file: string, what: string): unknown {
   try {
     return parseJson(readFileSync(file, 'utf8'));
   } catch (error) {
-    throw new Error(`Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Could not parse ${file}: ${errorMessage(error)}`, { cause: error });
   }
 }
 

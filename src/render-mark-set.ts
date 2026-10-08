@@ -14,7 +14,6 @@ export interface MarkSetOptions {
   glyph?: string;
 }
 
-/** The named buffers of one rendered mark set. */
 export interface MarkSet {
   faviconSvg: string;
   favicon32: Buffer;

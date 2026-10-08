@@ -3,9 +3,8 @@
 // brand config's `font`) overrides it. A relative override is resolved from the
 // caller's working directory, since the consumer: not this package: owns it.
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const pkgRoot = path.resolve(import.meta.dirname, '..', '..');
 
 // Absolute path to the bundled default font.
 export const DEFAULT_FONT: string = path.join(pkgRoot, 'assets/fonts/inter/inter-variable-latin.woff2');
