@@ -26,6 +26,8 @@ jobs:
 
       - run: npm ci
       - run: npx --no-install playwright install --with-deps chromium
+      # check = typecheck + build + tests + pack dry-run; the published package
+      # ships the compiled dist/, and `npm publish` rebuilds it through prepack.
       - run: npm run check
       - name: Verify tag matches package version
         run: |

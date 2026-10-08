@@ -4,6 +4,36 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- The source is TypeScript under strict settings. The package now ships compiled
+  JavaScript and type declarations in `dist/`, and the `bin` entry is
+  `dist/cli.js`. CLI behavior, flags, the config schema, the library exports and
+  the generated output are unchanged; the example kit regenerates byte for byte.
+  Option and result types are exported from the package root.
+- Config files are validated up front: every problem is reported together by
+  field path, a missing `brand.json` names the path it looked for, a surface may
+  not reuse the primary `identity.slug`, and omitted card text fields render
+  empty instead of the word `undefined`.
+- `--only` (and `only:`) with an unknown stage now fails with the valid stages
+  instead of building nothing. A valued flag given without a value
+  (`--out`, `--only`, ...) and a non-numeric `--scale`, `--size` or `--fit` fail
+  with a clear message. `--no-circle-preview` is a switch and no longer consumes
+  the argument after it.
+- A glyph cache rewritten while a process is running (a second build with
+  another weight of the same font) is reloaded instead of rendering from the
+  outlines read first.
+- `buildBrand` and `buildKit` restore `BRAND_FONT`, `BRAND_GLYPHS` and
+  `BRAND_WORDMARK_GLYPHS` when they finish instead of leaving them set.
+- A `star` layout with a link that ends at a group no longer throws, and a group
+  entry skipped as a duplicate no longer shifts the member lists of the groups
+  after it.
+- A wordmark with no visible characters fails with a message instead of writing
+  an SVG full of `NaN`.
+- Figure specs: `rows` (flow), `nodes` (diamond), `colors` and `size` are checked
+  entry by entry, so a malformed one raises `FigureSpecError` instead of a
+  `TypeError`; a `size` pair must be numbers, not numeric strings.
+- Library: `makePictogram` is typed by whether `variants` is given;
+  `isPictogramFiles` is exported to tell the two result shapes apart.
+
 - A figure no longer fails when ELK cannot compute its row-wrapped layout (it
   threw `java.util.NoSuchElementException` on some grouped, labelled graphs).
   The unwrapped layout already in hand is used instead.
