@@ -4,23 +4,28 @@
   "description": "Generate favicons, marks, wordmarks, social cards, brand sheets, and web tokens from one color and a 1-3 character glyph.",
   "type": "module",
   "scripts": {
-    "check": "npm test && npm run check:package",
-    "check:package": "npm pack --dry-run",
-    "test": "node --test",
-    "test:core": "node --test test/smoke.test.mjs"
+    "typecheck": "tsc",
+    "build": "node scripts/clean.ts && tsc -p tsconfig.build.json && node scripts/rewrite-declarations.ts",
+    "prepack": "npm run build",
+    "test": "node --test test/*.test.ts",
+    "test:core": "node --test test/smoke.test.ts test/regressions.test.ts test/cli.test.ts",
+    "check": "npm run typecheck && npm run build && npm test && npm run check:package",
+    "check:package": "npm pack --dry-run"
   },
   "bin": {
-    "branding-engine": "bin/cli.mjs"
+    "branding-engine": "dist/cli.js"
   },
   "exports": {
-    ".": "./index.mjs"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
+  "sideEffects": false,
   "files": [
-    "bin",
-    "src",
+    "dist",
     "assets",
     "examples",
-    "index.mjs",
     "!examples/figures/*.png"
   ],
   "engines": {
@@ -43,9 +48,6 @@
     "svg",
     "social-cards"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "dependencies": {
     "elkjs": "^0.12.0",
     "opentype.js": "^2.0.0",
@@ -61,7 +63,9 @@
     }
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^7.0.2"
   },
   "license": "MIT"
 }

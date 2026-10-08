@@ -332,7 +332,7 @@ Expanded `brand.json`:
 | `surfaces` | no | Inline additional surfaces; `surfaces.json` takes precedence |
 | `portrait` | for cards | JPEG path relative to `brand.json` |
 | `cardPalette` | for cards | Card accent and supporting text colors |
-| `cards` | no | Social-card definitions rendered to `<out>/cards/` |
+| `cards` | no | Social-card definitions rendered to `<out>/cards/`; `file`, `width`, `height` and `photoWidth` are required, the text fields (`eyebrow`, `name`, `tagline`, `meta`, `url`) default to empty |
 
 Additional surfaces inherit the primary glyph unless they override it:
 
@@ -660,7 +660,8 @@ Main exports:
 - `makeSheet(options)`
 - `makeWeb(options)`
 - `makeCards(options)`
-- `makePictogram(options)` / `makePictograms(options)`
+- `makePictogram(options)` / `makePictograms(options)`: a single tile resolves to `{ png, svg?, circle? }`,
+  a `variants` pair to `{ light?, dark? }`; `isPictogramFiles(result)` tells them apart
 - `resolveColor(value, tokens)` / `tintSvg(svgText, hex)`
 - `markSvg(options)`
 - `pictogramSvg(options)` / `PICTOGRAMS`
@@ -675,6 +676,14 @@ Main exports:
 - `parseFig(text)`: `.fig` text to a JSON spec; throws `FigureSpecError` (with `.errors`)
 - `figureSize(spec)`: the canvas for classic and radial specs; `null` for content-sized graphs
 - `palette(theme, tokens)` / `SIZES` / `TEMPLATES`
+
+### TypeScript
+
+The package is ESM and ships compiled JavaScript with type declarations; no build step or
+`.ts` source is needed to consume it. Option and result types (`BrandConfig`, `PictogramInput`,
+`FigureSpec`, `Palette`, and the rest) are exported from the package root. `launchBrowser` and
+`renderCard` work with a Playwright `Browser`; the declarations describe the few members they use,
+so type-checking a project does not require `@playwright/test` to be installed.
 
 ## Fonts and Glyph Extraction
 
@@ -695,8 +704,15 @@ variable font.
 ## Errors
 
 The CLI exits nonzero with an actionable message for invalid glyphs, invalid
-colors, missing configs, unavailable font glyphs, or missing optional browser
-dependencies.
+colors, missing or invalid configs, unknown `--only` stages, unknown flags,
+flags that need a value, unavailable font glyphs, or missing optional browser
+dependencies. A config with several problems reports all of them, each by field
+path.
+
+Flags may be written `--out dir` or `--out=dir`. `--circle-preview` has a
+negated form, `--no-circle-preview`. A flag the command does not recognize fails
+with `Unknown flag --name.`, so a mistyped `--onyl` cannot silently build every
+stage.
 
 Example:
 

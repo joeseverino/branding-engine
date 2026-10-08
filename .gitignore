@@ -4,3 +4,4 @@ kits/
 *-glyphs.json
 !assets/glyphs/*-glyphs.json
 .DS_Store
+dist/
