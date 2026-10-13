@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## 0.9.0 - 2026-10-12
 
 - The CLI parses flags with `node:util` `parseArgs`. `--flag=value` is accepted,
   `--no-circle-preview` is the negated form of `--circle-preview`, and an
