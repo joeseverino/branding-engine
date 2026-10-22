@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { globSync } from 'node:fs';
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -7,6 +8,16 @@ import { buildBrand, buildKit, markSvg, wordmarkSvg } from '../src/index.ts';
 import { scratch, setEnv } from './support.ts';
 
 const INTER = path.resolve('assets/fonts/inter/inter-variable-latin.woff2');
+
+test('every bundled glyph outline is written at 2 decimals', async () => {
+  const files = globSync('assets/glyphs/*.json');
+  assert.ok(files.length > 0);
+  for (const file of files) {
+    const { glyphs } = JSON.parse(await readFile(file, 'utf8')) as { glyphs: Record<string, { path: string }> };
+    const long = Object.entries(glyphs).flatMap(([ch, g]) => (g.path.match(/\d\.\d{3,}/g) ?? []).map((n) => `${ch}: ${n}`));
+    assert.deepEqual(long.slice(0, 5), [], `${file} has ${long.length} numbers past 2 decimals`);
+  }
+});
 
 test('a glyph cache rewritten in the same process is reloaded, not served stale', async (t) => {
   t.mock.method(console, 'log', () => {});

@@ -88,6 +88,9 @@ npm i -D @playwright/test && npx playwright install chromium
   node src/cli.ts build --config examples/severino-labs/brand.json \
     --out examples/severino-labs/generated
   ```
+  PNG and ICO bytes differ between machines even on unchanged inputs, so
+  commit a raster only when the change moved it: a build from the base
+  commit's inputs reproduces the committed bytes on this machine.
 - **Glyph rules:** 1–3 ASCII letters or digits; lowercase is normalized to
   uppercase; anything else must fail with an actionable message. See
   `normalizeGlyph`.
