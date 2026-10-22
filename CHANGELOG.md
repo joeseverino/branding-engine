@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+- A figure group is at least as wide as its label plus the corner inset, with
+  its members centered in any extra width, so the label sits inside the frame.
+- Every group label is drawn the same way, plain in the frame's top-left band.
+  A group label no longer wears a white chip when no spot along the band clears
+  every link; that crossing is a warning instead.
+- Two new figure warnings: `group label "…" runs past its frame`, and
+  `link A → B crosses group "…", which holds neither end`.
+
 ## 0.9.1 - 2026-10-21
 
 - The bundled Inter outlines are written at 2 decimals, the precision the glyph

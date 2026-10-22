@@ -7,7 +7,7 @@ import { rect, rimPoint, segments, type Body, type Point, type Rect } from '../g
 import type { GraphDirection, GraphRouting } from '../spec.ts';
 import type { GroupPad } from './frame.ts';
 import type { Graph, GraphLink, GraphNode } from './model.ts';
-import { METRICS } from './parts.ts';
+import { groupMinWidth, METRICS } from './parts.ts';
 
 type Side = 'WEST' | 'EAST' | 'NORTH' | 'SOUTH';
 
@@ -185,7 +185,13 @@ export async function layoutElk(
   for (const g of G.groups) {
     containers.set(g.id, {
       id: g.id, children: [], edges: [],
-      layoutOptions: { 'elk.padding': `[top=${groupPad.top},left=${groupPad.side},bottom=${groupPad.side},right=${groupPad.side}]` },
+      layoutOptions: {
+        'elk.padding': `[top=${groupPad.top},left=${groupPad.side},bottom=${groupPad.side},right=${groupPad.side}]`,
+        // At least as wide as its label, with the members centered in any slack.
+        'elk.nodeSize.constraints': 'MINIMUM_SIZE',
+        'elk.nodeSize.minimum': `(${Math.ceil(groupMinWidth(g, G.opts.textScale))}, 0)`,
+        'elk.contentAlignment': 'H_CENTER V_TOP',
+      },
     });
     parentOf.set(g.id, g.parent || 'root');
   }

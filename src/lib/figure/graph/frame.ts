@@ -4,6 +4,7 @@
 import { inflate, overlapArea, pathHitsRect, rect, union, type Rect } from '../geom.ts';
 import type { Dimensions } from '../palette.ts';
 import type { Graph, GraphGroup, GraphNode } from './model.ts';
+import { groupMinWidth, METRICS } from './parts.ts';
 import { nodeRect } from './place.ts';
 
 export interface GroupPad {
@@ -18,7 +19,8 @@ export function groupRectsGeo(G: Graph, pad: GroupPad): void {
     const members = G.nodes.filter((n) => n.group === g.id).flatMap((n) => [nodeRect(n), n.labelRect]);
     const kids = G.groups.filter((k) => k.parent === g.id).map((k) => k.rect);
     const inner = union([...members, ...kids]);
-    g.rect = rect(inner.x - pad.side, inner.y - pad.top, inner.w + pad.side * 2, inner.h + pad.top + pad.side);
+    const w = Math.max(inner.w + pad.side * 2, groupMinWidth(g, G.opts.textScale));
+    g.rect = rect(inner.x + inner.w / 2 - w / 2, inner.y - pad.top, w, inner.h + pad.top + pad.side);
   }
 }
 
@@ -104,14 +106,31 @@ export function collectWarnings(G: Graph, s: number): string[] {
     }
   }
   for (const g of G.groups) {
-    if (!g.labelRect || g.labelBadge) continue;
+    if (!g.labelRect) continue;
     const probe = inflate(g.labelRect, -1);
     for (const l of G.links) if (l.pts.length > 1 && pathHitsRect(l.pts, probe)) warn.push(`group label "${g.label}" crosses link ${lname(l)}`);
   }
+  // The groups an end sits in: a node's group and its parents, or a group end
+  // and its parents. A link may cross only these frames.
+  const homes = (id: string, isGroup: boolean): Set<string> => {
+    const out = new Set<string>();
+    for (let p = isGroup ? id : G.byId.get(id)?.group; p; p = G.groupById.get(p)?.parent) out.add(p);
+    return out;
+  };
   for (const g of G.groups) {
     if (!g.rect) continue;
-    const inside = (n: GraphNode): boolean => { for (let p = n.group; p; p = G.groups.find((x) => x.id === p)?.parent) if (p === g.id) return true; return false; };
+    const inside = (n: GraphNode): boolean => homes(n.id, false).has(g.id);
     for (const n of G.nodes) if (!inside(n) && overlapArea(inflate(g.rect, -2), nodeRect(n)) > 4) warn.push(`group "${g.label}" covers node ${name(n)}, which is not in it`);
+    // A label holds the inset from both sides, or it runs into the rounded corner.
+    const lr = g.labelRect, inset = METRICS.groupLabelInset * G.opts.textScale - 0.5;
+    if (lr && (lr.x < g.rect.x + inset || lr.x + lr.w > g.rect.x + g.rect.w - inset || lr.y < g.rect.y || lr.y + lr.h > g.rect.y + g.rect.h)) {
+      warn.push(`group label "${g.label}" runs past its frame`);
+    }
+    const body = inflate(g.rect, -2);
+    for (const l of G.links) {
+      if (l.pts.length < 2 || homes(l.from, l.fromGroup).has(g.id) || homes(l.to, l.toGroup).has(g.id)) continue;
+      if (pathHitsRect(l.pts, body)) warn.push(`link ${lname(l)} crosses group "${g.label}", which holds neither end`);
+    }
   }
   warn.push(...(G.notes || []));
   if (s < 0.7) warn.push(`text renders at ${Math.round(s * 100)}% to fit the frame; drop the size, shorten labels, or split the figure`);

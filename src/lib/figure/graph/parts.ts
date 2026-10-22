@@ -19,7 +19,13 @@ export const METRICS = {
   labelGap: 14,     // circle rim → its label
   labelMaxW: 340,
   boxTextMaxW: 300,
+  groupLabelInset: 30, // a group's side → its label, clear of the rounded corner
+  groupLabelTop: 26,   // a group's top → its label
 };
+
+/** The narrowest a group can be and still hold its label inside its frame. */
+export const groupMinWidth = (g: Pick<GraphGroup, 'labelSize'>, ts: number): number =>
+  g.labelSize ? g.labelSize.w + METRICS.groupLabelInset * ts * 2 : 0;
 
 // A named color (accent, deep, ink, muted) or a hex, as a stroke or text color:
 // theme-aware, so it reads on a dark page.

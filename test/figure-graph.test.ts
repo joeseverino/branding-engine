@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { parseFig } from '../src/lib/figure/dsl.ts';
-import { inflate, overlapArea, pathHitsRect, pointAlong, rect, rimPoint, segmentHitsRect, segments, union, type Point, type Rect } from '../src/lib/figure/geom.ts';
+import { inflate, overlapArea, pathHitsRect, pointAlong, rect, rimPoint, segmentHitsRect, segments, union, type Point, type Rect, type Size } from '../src/lib/figure/geom.ts';
 import { FigureSpecError, suggest, validateSpec } from '../src/lib/figure/schema.ts';
 import { required } from '../src/lib/guards.ts';
 import { normalize } from '../src/lib/figure/graph/normalize.ts';
@@ -17,7 +17,7 @@ import type { Dimensions } from '../src/lib/figure/palette.ts';
 import type { GraphSpec } from '../src/lib/figure/spec.ts';
 import { palette } from '../src/lib/figure/palette.ts';
 import { nodeRect, placeChips, placeLabels, placeGroupLabels, type LabelledGroups } from '../src/lib/figure/graph/place.ts';
-import { contentBounds, fitFrame } from '../src/lib/figure/graph/frame.ts';
+import { collectWarnings, contentBounds, fitFrame } from '../src/lib/figure/graph/frame.ts';
 import { makeFigure } from '../src/make-figure.ts';
 import { browserOrSkip, scratch } from './support.ts';
 
@@ -456,17 +456,51 @@ test('fixed layouts: a link to a group ends at its border and labels clear it', 
 
 test('group labels slide clear of a link crossing their top band', async () => {
   const G: LabelledGroups = {
-    groups: [{ id: 'G', label: 'Homelab', rect: rect(0, 0, 600, 400) }],
+    groups: [{ id: 'G', label: 'Homelab', rect: rect(0, 0, 600, 400), labelSize: { w: 120, h: 20 } }],
     links: [{ pts: [{ x: 60, y: -100 }, { x: 60, y: 200 }] }],
   };
-  placeGroupLabels(G, new Map([['G', { w: 120, h: 20 }]]), 1);
+  placeGroupLabels(G, 1);
   const lr = required(G.groups[0]?.labelRect, 'the group label');
-  assert.equal(G.groups[0]?.labelBadge, false);
   assert.ok(!pathHitsRect(required(G.links[0], 'link').pts, lr), 'label clears the line');
   assert.ok(lr.x > 60 && lr.x < 120, `moved just past the line (x=${lr.x})`);
   G.links.push({ pts: [{ x: -50, y: 30 }, { x: 650, y: 30 }] }); // a line along the whole band
-  placeGroupLabels(G, new Map([['G', { w: 120, h: 20 }]]), 1);
-  assert.equal(G.groups[0]?.labelBadge, true, 'no clear spot: badge it');
+  placeGroupLabels(G, 1);
+  assert.equal(G.groups[0]?.labelRect?.x, 30, 'no clear spot: the label keeps its usual place at the inset');
+});
+
+// A spec with fixed sizes: `measure` returns the size each fragment would take.
+const measureBy = (sizes: Record<string, Size>, fallback: Size): Measure => async (fragments) =>
+  fragments.map((html) => sizes[Object.keys(sizes).find((k) => html.includes(k)) ?? ''] ?? fallback);
+
+for (const layout of ['auto', 'row'] as const) {
+  test(`${layout} layout: a group is at least as wide as its label, which sits inside its frame`, async () => {
+    const spec = parseFig(['Edge network [dashed] {', '  Worker [icon: globe]', '}', 'Laptop [icon: laptop]', 'Laptop > Worker'].join('\n'));
+    spec.layout = layout;
+    // A group label much wider than its one member and that member's label.
+    const { graph, warnings } = await renderGraph(spec, palette('light', {}), measureBy({ 'Edge network': { w: 420, h: 20 } }, { w: 120, h: 40 }));
+    const g = required(graph.groups[0], 'the group');
+    const r = required(g.rect, 'the group frame'), lr = required(g.labelRect, 'the group label');
+    assert.ok(lr.x >= r.x + 30 && lr.x + lr.w <= r.x + r.w - 30, `label ${JSON.stringify(lr)} inside frame ${JSON.stringify(r)}`);
+    const worker = required(graph.byId.get('Worker'), 'Worker');
+    assert.ok(Math.abs(worker.x - (r.x + r.w / 2)) < 2, 'the member is centered in the wider frame');
+    assert.deepEqual(warnings.filter((w) => w.includes('frame')), []);
+  });
+}
+
+test('frame check: a group label past its frame and a link through a group that holds neither end are warnings', () => {
+  const G = normalize(parseFig(['Mid [dashed] {', '  m [icon: server]', '}', 'a [icon: server]', 'b [icon: server]', 'a > b'].join('\n')));
+  const at = (id: string, x: number): void => { const n = required(G.byId.get(id), id); n.x = x; n.y = 0; if (n.shape === 'circle') n.d = 100; };
+  at('a', 0); at('m', 400); at('b', 800);
+  const g = required(G.groups[0], 'Mid');
+  g.rect = rect(300, -150, 200, 300);
+  g.labelRect = rect(330, -124, 190, 20); // runs past the right side
+  required(G.links[0], 'a > b').pts = [{ x: 60, y: 0 }, { x: 740, y: 0 }];
+  const warnings = collectWarnings(G, 1);
+  assert.ok(warnings.includes('group label "Mid" runs past its frame'), warnings.join('; '));
+  assert.ok(warnings.includes('link a → b crosses group "Mid", which holds neither end'), warnings.join('; '));
+  g.labelRect = rect(330, -124, 100, 20);
+  required(G.links[0], 'a > b').pts = [{ x: 60, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 300 }, { x: 740, y: 300 }];
+  assert.deepEqual(collectWarnings(G, 1).filter((w) => w.includes('Mid')), []);
 });
 
 test('ELK: runs of two links that nearly meet on one track are nudged apart', async () => {
