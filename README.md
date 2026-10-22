@@ -475,7 +475,8 @@ dark pipeline of box nodes).
 
 After layout the engine checks its own work and prints a `warn` line for anything a reviewer
 would catch by eye: labels that overlap each other, a node, or a link (a group's label first slides
-along its top edge to clear any line); a group that covers a node
+along its top edge to clear any line); a group label that runs past its frame; a link that
+crosses a group holding neither of its ends; a group that covers a node
 it does not contain; an empty group or a self-link in a JSON spec (neither is drawn); text scaled
 below 70% to fit the frame. `--strict` turns any warning into a failure and writes nothing, for
 CI or for an agent that cannot look at the PNG.
