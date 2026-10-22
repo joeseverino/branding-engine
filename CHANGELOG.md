@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## 0.9.1 - 2026-10-21
+
+- The bundled Inter outlines are written at 2 decimals, the precision the glyph
+  extractor writes. Marks and wordmarks drawn from them are about 60% smaller and
+  draw the same shapes: no point moves by more than 0.005 font units.
+- Development dependencies: `@playwright/test` 1.64.1, `@types/node` 24.19.2.
+
 ## 0.9.0 - 2026-10-12
 
 - The CLI parses flags with `node:util` `parseArgs`. `--flag=value` is accepted,
