@@ -140,21 +140,20 @@ export function placeEndLabels(G: Graph): void {
 }
 
 // A group's label sits in the band along its top edge, as far left as it can
-// without a link crossing it. With no clear spot it stays at the left and gets
-// a chip background, the same treatment as a crowded node label.
+// without a link crossing it. Every group label is drawn the same way: with no
+// clear spot it stays at the left, and the frame check reports the crossing.
 export interface LabelledGroups {
-  groups: Array<Pick<GraphGroup, 'id' | 'label' | 'rect' | 'labelRect' | 'labelBadge'>>;
+  groups: Array<Pick<GraphGroup, 'id' | 'label' | 'rect' | 'labelSize' | 'labelRect'>>;
   links: Array<Pick<GraphLink, 'pts'>>;
 }
 
-export function placeGroupLabels(G: LabelledGroups, sizes: ReadonlyMap<string, Size>, ts: number): void {
-  const inset = 30 * ts, top = 26 * ts, pad = 14;
+export function placeGroupLabels(G: LabelledGroups, ts: number): void {
+  const inset = METRICS.groupLabelInset * ts, top = METRICS.groupLabelTop * ts, pad = 14;
   const paths = G.links.filter((l) => l.pts.length > 1);
   for (const g of G.groups) {
     g.labelRect = undefined;
-    g.labelBadge = false;
-    if (!g.rect || !g.label || !sizes.has(g.id)) continue;
-    const { w, h } = required(sizes.get(g.id), `the label size of group "${g.id}"`);
+    if (!g.rect || !g.label || !g.labelSize) continue;
+    const { w, h } = g.labelSize;
     const x0 = g.rect.x + inset, x1 = g.rect.x + g.rect.w - inset - w;
     const y = g.rect.y + top;
     const at = (x: number): Rect => rect(x, y, w, h);
@@ -169,7 +168,6 @@ export function placeGroupLabels(G: LabelledGroups, sizes: ReadonlyMap<string, S
       }
     }
     const x = xs.filter((v) => v <= x1 + 0.5).sort((a, b) => a - b).find(clear);
-    if (x !== undefined) g.labelRect = at(x);
-    else { g.labelRect = at(x0); g.labelBadge = true; }
+    g.labelRect = at(x ?? x0);
   }
 }

@@ -82,8 +82,8 @@ export interface GraphGroup {
   color: string | undefined;
   parent: string | undefined;
   rect?: Rect;
+  labelSize?: Size;
   labelRect?: Rect;
-  labelBadge?: boolean;
 }
 
 export interface GraphOptions {

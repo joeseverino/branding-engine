@@ -6,7 +6,7 @@ import { segments, union, type Point, type Rect } from '../geom.ts';
 import type { Palette } from '../palette.ts';
 import type { Frame } from './frame.ts';
 import type { BoxNode, CircleNode, Graph, GraphLink } from './model.ts';
-import { boxInnerHtml, boxStyle, chipHtml, colorOf, endLabelHtml, fillOf, groupLabelHtml, nodeLabelHtml, titleHtml } from './parts.ts';
+import { boxInnerHtml, boxStyle, chipHtml, colorOf, endLabelHtml, fillOf, groupLabelHtml, METRICS, nodeLabelHtml, titleHtml } from './parts.ts';
 
 const f = (v: number): number => Math.round(v * 100) / 100;
 const at = (r: Rect): string => `position:absolute;left:${f(r.x)}px;top:${f(r.y)}px;width:${f(r.w)}px;height:${f(r.h)}px`;
@@ -80,13 +80,10 @@ export function drawGraph(G: Graph, c: Palette, frame: Frame): string {
   const out: string[] = [];
   for (const g of G.groups) {
     if (!g.rect) continue;
+    // Corners round by the label inset, so a label at its inset clears the curve.
     const border = `2px ${g.style === 'dashed' ? 'dashed' : 'solid'} ${g.color ? colorOf(g.color, c) : c.groupBorder}`;
-    out.push(`<div style="${at(g.rect)};border-radius:${30 * ts}px;background:${c.groupFill};border:${border}"></div>`);
-    if (g.labelRect) {
-      const badge = g.labelBadge
-        ? `;background:${c.chipBg};border-radius:${7 * ts}px;box-shadow:${c.nodeShadow};outline:${7 * ts}px solid ${c.chipBg}` : '';
-      out.push(`<div style="${at(g.labelRect)}${badge}">${groupLabelHtml(g, c, ts)}</div>`);
-    }
+    out.push(`<div style="${at(g.rect)};border-radius:${METRICS.groupLabelInset * ts}px;background:${c.groupFill};border:${border}"></div>`);
+    if (g.labelRect) out.push(`<div style="${at(g.labelRect)}">${groupLabelHtml(g, c, ts)}</div>`);
   }
   // Quiet links (muted, dashed, dotted) paint first, so a solid link that
   // shares a trunk or a port stays on top.

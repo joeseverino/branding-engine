@@ -11,7 +11,7 @@ import { layoutElk } from './layout-elk.ts';
 import { layoutGeo, routeGroupLinks } from './layout-geo.ts';
 import type { Graph, GraphLink } from './model.ts';
 import { isRadial, normalize } from './normalize.ts';
-import { boxInnerHtml, chipHtml, endLabelHtml, groupLabelHtml, nodeLabelHtml, titleHtml } from './parts.ts';
+import { boxInnerHtml, chipHtml, endLabelHtml, groupLabelHtml, METRICS, nodeLabelHtml, titleHtml } from './parts.ts';
 import { placeChips, placeEndLabels, placeGroupLabels, placeLabels } from './place.ts';
 
 export { normalize };
@@ -49,8 +49,7 @@ export async function renderGraph(spec: GraphSpec, c: Palette, measure: Measure)
     if (l.fromLabel) job(endLabelHtml(l.fromLabel, c, ts), (s) => { l.fromSize = s; });
     if (l.toLabel) job(endLabelHtml(l.toLabel, c, ts), (s) => { l.toSize = s; });
   }
-  const groupSizes = new Map<string, Size>();
-  for (const g of G.groups) if (g.label) job(groupLabelHtml(g, c, ts), (s) => groupSizes.set(g.id, s));
+  for (const g of G.groups) if (g.label) job(groupLabelHtml(g, c, ts), (s) => { g.labelSize = s; });
   let titleSize: Size = { w: 0, h: 0 };
   const title = titleHtml(G.opts, c);
   if (title) job(title, (s) => { titleSize = s; });
@@ -60,8 +59,8 @@ export async function renderGraph(spec: GraphSpec, c: Palette, measure: Measure)
   const d = Math.round(150 * G.opts.nodeScale);
   for (const n of G.nodes) if (n.shape === 'circle') n.d = Math.round(d * n.scale);
 
-  const labelH = Math.max(0, ...[...groupSizes.values()].map((s) => s.h));
-  const groupPad = { top: Math.round(26 * ts + labelH + 30), side: Math.round(34 * ts) };
+  const labelH = Math.max(0, ...G.groups.map((g) => g.labelSize?.h ?? 0));
+  const groupPad = { top: Math.round(METRICS.groupLabelTop * ts + labelH + 30), side: Math.round(34 * ts) };
 
   // Radial layouts keep the 3:2 frame they always had; the rest size to content.
   const sizePx = G.opts.size ? resolveSize(G.opts.size) : isRadial(G.opts.layout) ? resolveSize('topo') : null;
@@ -142,7 +141,7 @@ export async function renderGraph(spec: GraphSpec, c: Palette, measure: Measure)
     placeEndLabels(G);
   }
 
-  placeGroupLabels(G, groupSizes, ts);
+  placeGroupLabels(G, ts);
   const frame = frameFor();
   const warnings = collectWarnings(G, frame.s);
   const html = drawGraph(G, c, frame);
