@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## 0.9.3 - 2026-10-29
+
+- A figure link that steps just before its arrow is straightened at any
+  scale: the tolerance is a fifth of the smallest node a link can end on, never
+  under 14 layout units, so a large layout's lines end straight too.
+
 ## 0.9.2 - 2026-10-22
 
 - A figure group is at least as wide as its label plus the corner inset, with
