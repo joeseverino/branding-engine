@@ -6,7 +6,7 @@ import { required } from '../../guards.ts';
 import { rect, rimPoint, segments, type Body, type Point, type Rect } from '../geom.ts';
 import type { GraphDirection, GraphRouting } from '../spec.ts';
 import type { GroupPad } from './frame.ts';
-import type { Graph, GraphLink, GraphNode } from './model.ts';
+import type { BoxNode, CircleNode, Graph, GraphLink, GraphNode } from './model.ts';
 import { groupMinWidth, METRICS } from './parts.ts';
 
 type Side = 'WEST' | 'EAST' | 'NORTH' | 'SOUTH';
@@ -114,6 +114,13 @@ export function straightenJogs(links: Array<PathLink & Pick<GraphLink, 'chipRect
       i = Math.max(0, i - 2);
     }
   }
+}
+
+// The step grows with the layout's scale, so the tolerance is a fifth of the
+// smallest node a link can end on, never under 14.
+export function jogTolerance(nodes: ReadonlyArray<Pick<CircleNode, 'shape' | 'd'> | Pick<BoxNode, 'shape' | 'w' | 'h'>>): number {
+  const smallest = Math.min(...nodes.map((n) => (n.shape === 'box' ? Math.min(n.w, n.h) : n.d)));
+  return Number.isFinite(smallest) ? Math.max(14, smallest / 5) : 14;
 }
 
 // An end on a group's border: on the segment's axis through `p` (the port),
@@ -338,7 +345,7 @@ export async function layoutElk(
     }
   }
   if (ported) {
-    straightenJogs(G.links.filter((l) => l.pts.length > 3));
+    straightenJogs(G.links.filter((l) => l.pts.length > 3), { tolerance: jogTolerance(G.nodes) });
     separateTouchingRuns(G.links.filter((l) => l.pts.length > 3));
   }
 }

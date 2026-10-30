@@ -533,6 +533,18 @@ test('ELK: a short step before a link\'s end is straightened onto the run before
   assert.equal(real.pts.length, 4, 'a bend longer than the tolerance is kept');
 });
 
+test('ELK: the end-step tolerance follows the node size, so a large layout ends straight too', async () => {
+  const { jogTolerance, straightenJogs } = await import('../src/lib/figure/graph/layout-elk.ts');
+  const circles = [{ shape: 'circle', d: 150 }] as const;
+  assert.equal(jogTolerance(circles), 30);
+  assert.equal(jogTolerance([{ shape: 'circle', d: 40 }]), 14, 'never under the floor');
+  const wide = { pts: [{ x: 2769.5, y: 990.5 }, { x: 3222, y: 990.5 }, { x: 3222, y: 1012 }, { x: 3369, y: 1012 }] };
+  const real = { pts: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 300, y: 80 }] };
+  straightenJogs([wide, real], { tolerance: jogTolerance(circles) });
+  assert.deepEqual(wide.pts, [{ x: 2769.5, y: 990.5 }, { x: 3369, y: 990.5 }], 'one straight run');
+  assert.equal(real.pts.length, 4, 'a real bend is still kept');
+});
+
 
 test('star layout: a link that ends at a group border does not crash the slot math', () => {
   const G = normalize(parseFig('layout: star\nHub [anchor]\nA\nB\nCloud {\n  x\n  y\n}\nHub > Cloud\nHub > A\nHub > B'));
